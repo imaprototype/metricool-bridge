@@ -1,6 +1,8 @@
 import NextAuth from "next-auth"
 import Credentials from "next-auth/providers/credentials"
 
+export { isValidApiKey } from "@/lib/apiKey"
+
 /**
  * Login simple para la UI web (equipo de una persona, ver ARCHITECTURE.md
  * §2) — usuario/contraseña contra dos variables de entorno, sin proveedor

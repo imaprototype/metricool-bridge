@@ -71,9 +71,21 @@ export interface MetricoolPost {
   [key: string]: unknown
 }
 
-export async function listPosts(start: string, end: string): Promise<MetricoolPost[]> {
-  const res = await metricoolFetch(buildUrl("/v2/scheduler/posts", { start, end }))
+/**
+ * Metricool exige `start`/`end` en formato `yyyy-MM-dd'T'HH:mm:ss` (sin
+ * offset de zona) — confirmado contra la API real, un `YYYY-MM-DD` a secas
+ * da 400 ValidationError. Se recibe `Date` en vez de string para que
+ * ningún llamador tenga que recordar el formato exacto.
+ */
+export async function listPosts(start: Date, end: Date): Promise<MetricoolPost[]> {
+  const res = await metricoolFetch(
+    buildUrl("/v2/scheduler/posts", { start: toMetricoolDateTime(start), end: toMetricoolDateTime(end) })
+  )
   return unwrap<MetricoolPost[]>(res)
+}
+
+function toMetricoolDateTime(date: Date): string {
+  return date.toISOString().slice(0, 19)
 }
 
 export async function getPost(id: number): Promise<MetricoolPost> {

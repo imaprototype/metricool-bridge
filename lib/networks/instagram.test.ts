@@ -43,13 +43,17 @@ describe("listPosts", () => {
   it("unwraps { data: [...] } and sends auth header + query params", async () => {
     vi.mocked(fetch).mockResolvedValueOnce(jsonResponse({ data: [{ id: 1 }, { id: 2 }] }))
 
-    const posts = await listPosts("2026-09-01", "2026-09-30")
+    const posts = await listPosts(
+      new Date("2026-09-01T00:00:00.000Z"),
+      new Date("2026-09-30T23:59:59.000Z")
+    )
 
     expect(posts).toEqual([{ id: 1 }, { id: 2 }])
     const [url, init] = vi.mocked(fetch).mock.calls[0]
     expect(String(url)).toContain("/v2/scheduler/posts?")
-    expect(String(url)).toContain("start=2026-09-01")
-    expect(String(url)).toContain("end=2026-09-30")
+    // Metricool exige yyyy-MM-dd'T'HH:mm:ss (sin offset) — confirmado contra la API real.
+    expect(String(url)).toContain("start=2026-09-01T00%3A00%3A00")
+    expect(String(url)).toContain("end=2026-09-30T23%3A59%3A59")
     expect(String(url)).toContain("blogId=456")
     expect(String(url)).toContain("userId=123")
     expect((init?.headers as Record<string, string>)["X-Mc-Auth"]).toBe("test-token")

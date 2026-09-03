@@ -156,7 +156,7 @@ Query en todas las llamadas: blogId=<METRICOOL_BLOG_ID>&userId=<METRICOOL_USER_I
 
 | Método | Ruta | Notas |
 |---|---|---|
-| GET | `/v2/scheduler/posts?start=&end=` | Lista; respuesta envuelta en `{data: [...]}` |
+| GET | `/v2/scheduler/posts?start=&end=` | Lista; respuesta envuelta en `{data: [...]}`. `start`/`end` exigen formato exacto `yyyy-MM-dd'T'HH:mm:ss` (sin offset de zona) — un `YYYY-MM-DD` a secas da `400 ValidationError`. Confirmado contra la API real construyendo `/api/health` |
 | GET | `/v2/scheduler/posts/{id}` | Un post; `{data: {...}}` |
 | POST | `/v2/scheduler/posts` | Crea. Devuelve el post creado con su `id` |
 | PUT | `/v2/scheduler/posts/{id}` | **Reemplaza** el post — Metricool asigna un `id` nuevo, el viejo pasa a dar 404. Capturar siempre el `id` de la respuesta y persistirlo en `PublicationTarget.metricoolId` |
