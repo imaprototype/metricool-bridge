@@ -49,6 +49,9 @@ describe("deleteAsset", () => {
 
     await deleteAsset("https://blob.vercel-storage.com/foo-abc123.jpg")
 
-    expect(del).toHaveBeenCalledWith("https://blob.vercel-storage.com/foo-abc123.jpg")
+    expect(del).toHaveBeenCalledWith(
+      "https://blob.vercel-storage.com/foo-abc123.jpg",
+      expect.objectContaining({})
+    )
   })
 })
