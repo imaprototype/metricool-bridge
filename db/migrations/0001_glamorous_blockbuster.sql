@@ -1,0 +1,1 @@
+ALTER TABLE "publications" ADD COLUMN "timezone" text DEFAULT 'Europe/Madrid' NOT NULL;

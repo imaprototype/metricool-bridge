@@ -88,6 +88,43 @@ function toMetricoolDateTime(date: Date): string {
   return date.toISOString().slice(0, 19)
 }
 
+export interface MetricoolDateTimeInfo {
+  dateTime: string
+  timezone: string
+}
+
+/**
+ * El campo `publicationDate` de POST/PUT `/v2/scheduler/posts` NO acepta un
+ * string ISO — Metricool lo deserializa como un bean `DateTimeInfo` con
+ * `{ dateTime, timezone }`, y `dateTime` es la hora LOCAL en esa zona (sin
+ * offset), no UTC. Confirmado contra la API real en el smoke test de la
+ * Fase 9: un string ISO da 500 "no String-argument constructor...
+ * DateTimeInfo". `date` es el instante absoluto que queremos programar;
+ * esta función lo convierte a la hora de pared de `timezone` para que
+ * Metricool programe exactamente ese instante, no la misma hora reloj en
+ * UTC reinterpretada como si fuera de esa zona.
+ */
+export function toMetricoolDateTimeInfo(date: Date, timezone: string): MetricoolDateTimeInfo {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: timezone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  }).formatToParts(date)
+
+  const get = (type: string) => parts.find((p) => p.type === type)?.value ?? "00"
+  const hour = get("hour") === "24" ? "00" : get("hour")
+
+  return {
+    dateTime: `${get("year")}-${get("month")}-${get("day")}T${hour}:${get("minute")}:${get("second")}`,
+    timezone,
+  }
+}
+
 export async function getPost(id: number): Promise<MetricoolPost> {
   const res = await metricoolFetch(buildUrl(`/v2/scheduler/posts/${id}`))
   return unwrap<MetricoolPost>(res)

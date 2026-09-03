@@ -130,6 +130,12 @@ describe("createPublication", () => {
     const payload = vi.mocked(instagram.createPost).mock.calls[0][0]
     expect(payload.media).toEqual(["https://static.metricool.com/feed.jpg"])
     expect(payload.instagramData).toEqual({ type: "POST" })
+    // Metricool exige { dateTime, timezone } — un string ISO da 500 (confirmado
+    // contra la API real en el smoke test de la Fase 9).
+    expect(payload.publicationDate).toEqual({
+      dateTime: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/),
+      timezone: "Europe/Madrid",
+    })
 
     expect(createPublicationTarget).toHaveBeenCalledWith(
       expect.objectContaining({ publicationId: "pub-1", network: "instagram", metricoolId: 999 })
@@ -184,6 +190,32 @@ describe("createPublication", () => {
 
     expect(instagram.createPost).not.toHaveBeenCalled()
   })
+
+  it("marca la publicación como ERROR si Metricool falla, en vez de dejarla huérfana en PENDING", async () => {
+    // Bug real encontrado en el smoke test de la Fase 9: un createPost
+    // fallido dejaba la fila de Publication en PENDING para siempre, sin
+    // ningún target asociado, sin reflejar que la creación no llegó a
+    // completarse en Metricool.
+    vi.mocked(getAssetById).mockResolvedValue(
+      mockAsset("asset-1", { FEED_POST: "https://blob.test/feed.jpg" }) as never
+    )
+    vi.mocked(instagram.normalizeImageUrl).mockResolvedValue("https://static.metricool.com/feed.jpg")
+    vi.mocked(createPublicationRow).mockResolvedValue({ id: "pub-1" } as never)
+    vi.mocked(instagram.createPost).mockRejectedValue(new Error("Metricool respondió 500"))
+
+    await expect(
+      createPublication({
+        format: "FEED_POST",
+        assetIds: ["asset-1"],
+        text: "hola",
+        publicationDate: new Date(),
+        targets: [{ network: "instagram" }],
+      })
+    ).rejects.toThrow("Metricool respondió 500")
+
+    expect(updatePublicationRow).toHaveBeenCalledWith("pub-1", { status: "ERROR" })
+    expect(createPublicationTarget).not.toHaveBeenCalled()
+  })
 })
 
 describe("updatePublication", () => {
@@ -193,6 +225,7 @@ describe("updatePublication", () => {
       format: "FEED_POST",
       text: "viejo",
       publicationDate: new Date("2026-09-10T10:00:00Z"),
+      timezone: "Europe/Madrid",
       assetIds: ["asset-1"],
     } as never)
     vi.mocked(getAssetById).mockResolvedValue(
@@ -258,6 +291,7 @@ describe("createStoryForPublication", () => {
       id: "pub-1",
       assetIds: ["asset-1"],
       text: "texto original",
+      timezone: "Europe/Madrid",
     } as never)
     vi.mocked(getAssetById).mockResolvedValue(
       mockAsset("asset-1", { STORY: "https://blob.test/story.jpg" }) as never

@@ -32,6 +32,7 @@ function publicationFixture(overrides: Partial<Record<string, unknown>> = {}) {
     id: "pub-1",
     format: "FEED_POST",
     publicationDate: new Date("2026-09-10T10:00:00.000Z"),
+    timezone: "UTC",
     text: "hola",
     assetIds: ["asset-1"],
     status: "PUBLISHED",
@@ -45,9 +46,12 @@ function publicationFixture(overrides: Partial<Record<string, unknown>> = {}) {
 }
 
 describe("verifyPublications", () => {
-  it("no marca drift cuando la fecha en Metricool coincide con la esperada", async () => {
+  it("no marca drift cuando la fecha en Metricool coincide con la esperada (con margen de segundos)", async () => {
     vi.mocked(listPublicationsWithTargets).mockResolvedValue([publicationFixture()] as never)
-    const getPost = vi.fn().mockResolvedValue({ id: 100, publicationDate: "2026-09-10T10:00:00.000Z" })
+    // Metricool trunca los segundos al guardar — sigue sin ser drift.
+    const getPost = vi
+      .fn()
+      .mockResolvedValue({ id: 100, publicationDate: { dateTime: "2026-09-10T10:00:00", timezone: "UTC" } })
     vi.mocked(networkClientFor).mockReturnValue({ getPost } as never)
 
     const result = await verifyPublications({ from: new Date(), to: new Date() })
@@ -59,7 +63,9 @@ describe("verifyPublications", () => {
 
   it("marca drift cuando Metricool recolocó la fecha en silencio", async () => {
     vi.mocked(listPublicationsWithTargets).mockResolvedValue([publicationFixture()] as never)
-    const getPost = vi.fn().mockResolvedValue({ id: 100, publicationDate: "2026-09-11T08:00:00.000Z" })
+    const getPost = vi
+      .fn()
+      .mockResolvedValue({ id: 100, publicationDate: { dateTime: "2026-09-11T08:00:00", timezone: "UTC" } })
     vi.mocked(networkClientFor).mockReturnValue({ getPost } as never)
 
     const result = await verifyPublications({ from: new Date(), to: new Date() })
@@ -81,6 +87,18 @@ describe("verifyPublications", () => {
 
     expect(result.drifts[0].driftDetected).toBe(true)
     expect(result.drifts[0].actual).toBeNull()
+  })
+
+  it("marca drift si Metricool devuelve otra zona horaria aunque la hora local coincida", async () => {
+    vi.mocked(listPublicationsWithTargets).mockResolvedValue([publicationFixture()] as never)
+    const getPost = vi
+      .fn()
+      .mockResolvedValue({ id: 100, publicationDate: { dateTime: "2026-09-10T10:00:00", timezone: "Europe/Madrid" } })
+    vi.mocked(networkClientFor).mockReturnValue({ getPost } as never)
+
+    const result = await verifyPublications({ from: new Date(), to: new Date() })
+
+    expect(result.drifts[0].driftDetected).toBe(true)
   })
 
   it("ignora targets sin metricoolId todavía", async () => {

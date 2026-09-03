@@ -9,6 +9,7 @@ const updatePublicationSchema = z.object({
     .iso.datetime({ offset: true })
     .or(z.iso.datetime())
     .optional(),
+  timezone: z.string().min(1).optional(),
 })
 
 export async function PATCH(request: NextRequest, ctx: RouteContext<"/api/publications/[id]">) {
@@ -24,6 +25,7 @@ export async function PATCH(request: NextRequest, ctx: RouteContext<"/api/public
       text: parsed.data.text,
       assetIds: parsed.data.assetIds,
       publicationDate: parsed.data.publicationDate ? new Date(parsed.data.publicationDate) : undefined,
+      timezone: parsed.data.timezone,
     })
     if (!publication) {
       return NextResponse.json({ error: "Publicación no encontrada." }, { status: 404 })

@@ -9,6 +9,7 @@ import {
   normalizeCollaborators,
   normalizeImageUrl,
   sanitizePostForWrite,
+  toMetricoolDateTimeInfo,
   updatePost,
   validateAsset,
 } from "./instagram"
@@ -234,5 +235,24 @@ describe("instagramAdapter.buildProviderPayload", () => {
       target: { network: "instagram" },
     })
     expect(payload).toEqual({ type: "POST" })
+  })
+})
+
+describe("toMetricoolDateTimeInfo", () => {
+  it("convierte un instante UTC a la hora de pared de la zona pedida (no la misma hora reloj en UTC)", () => {
+    // 2026-07-15T10:00:00Z es verano en Madrid (CEST, UTC+2) -> 12:00 local.
+    const result = toMetricoolDateTimeInfo(new Date("2026-07-15T10:00:00.000Z"), "Europe/Madrid")
+    expect(result).toEqual({ dateTime: "2026-07-15T12:00:00", timezone: "Europe/Madrid" })
+  })
+
+  it("respeta el cambio de invierno/verano (DST) de la zona", () => {
+    // 2026-01-15T10:00:00Z es invierno en Madrid (CET, UTC+1) -> 11:00 local.
+    const result = toMetricoolDateTimeInfo(new Date("2026-01-15T10:00:00.000Z"), "Europe/Madrid")
+    expect(result).toEqual({ dateTime: "2026-01-15T11:00:00", timezone: "Europe/Madrid" })
+  })
+
+  it("no aplica offset cuando la zona es UTC", () => {
+    const result = toMetricoolDateTimeInfo(new Date("2026-07-15T10:00:00.000Z"), "UTC")
+    expect(result).toEqual({ dateTime: "2026-07-15T10:00:00", timezone: "UTC" })
   })
 })

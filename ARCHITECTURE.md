@@ -81,7 +81,7 @@ AssetUsage                              // se crea sola cuando un Asset entra en
 Publication                             // antes "Post" — ahora agnóstico de red
   id               uuid (interno, estable)
   format           "FEED_POST" | "CAROUSEL" | "STORY" | "REEL" | "VIDEO_POST"
-  publicationDate  datetime + timezone
+  publicationDate  datetime + timezone   // timezone es IANA (p. ej. "Europe/Madrid"), obligatorio: Metricool exige { dateTime, timezone } en su payload, no un instante UTC a secas — ver §5
   text             string
   assetIds         uuid[]                // referencias a Asset, 1 o varias según el formato
   targets          PublicationTarget[]   // una entrada por red donde se publica
@@ -164,6 +164,7 @@ Query en todas las llamadas: blogId=<METRICOOL_BLOG_ID>&userId=<METRICOOL_USER_I
 | GET | `/actions/normalize/image/url?url=<url pública, url-encoded>` | Descarga la imagen desde esa URL pública y la re-hostea en `static.metricool.com`. **Responde texto plano** (una URL entre comillas), no JSON |
 
 **Reglas de payload para `PUT`/`POST` (probadas a base de error 500):**
+- `publicationDate` va como objeto `{ dateTime: "yyyy-MM-ddTHH:mm:ss", timezone: "Europe/Madrid" }` (hora local de esa zona, sin offset) — un string ISO da `500 InternalError` ("no String-argument constructor... DateTimeInfo"). Confirmado contra la API real en el smoke test de la Fase 9.
 - Antes de reenviar un post obtenido por `GET`, eliminar: `creationDate`, `hasNotReadNotes`, `uuid`, `creatorUserMail`, `creatorUserId`.
 - `providers` se simplifica siempre a `[{ network: "instagram" }]` (o la lista de redes del `Publication.targets`) — nunca reenviar `status`/`detailedStatus`, son de solo lectura y provocan `500 PublicationStatusCode`.
 - `collaborators` (Instagram) va en la raíz del post como **array de objetos** `[{ username: "handle" }]`. Un array de strings provoca un 500 muy explícito. El campo no se refleja de vuelta en los `GET` posteriores.

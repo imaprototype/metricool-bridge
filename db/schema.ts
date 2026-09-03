@@ -62,6 +62,12 @@ export const publications = pgTable("publications", {
   id: uuid("id").primaryKey().defaultRandom(),
   format: publicationFormatEnum("format").notNull(),
   publicationDate: timestamp("publication_date", { withTimezone: true }).notNull(),
+  // Zona horaria IANA con la que se interpreta publicationDate al construir
+  // el payload de Metricool — su API exige un objeto { dateTime, timezone }
+  // explícito, no basta con el instante UTC (confirmado contra la API real
+  // en el smoke test de la Fase 9: un string ISO da 500 "no String-argument
+  // constructor... DateTimeInfo"). Ver ARCHITECTURE.md §5.
+  timezone: text("timezone").notNull().default("Europe/Madrid"),
   text: text("text").notNull(),
   // Referencias a Asset, 1 o varias según el formato (orden = orden del carrusel).
   assetIds: uuid("asset_ids").array().notNull().default([]),

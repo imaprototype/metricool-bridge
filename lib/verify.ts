@@ -1,7 +1,7 @@
 import { updatePublication as updatePublicationRow } from "@/db/queries/publications"
 import { recordSyncLog } from "@/db/queries/syncLogs"
 import { listPublicationsWithTargets, networkClientFor } from "@/lib/publications"
-import type { MetricoolPost } from "@/lib/networks/instagram"
+import { toMetricoolDateTimeInfo, type MetricoolDateTimeInfo, type MetricoolPost } from "@/lib/networks/instagram"
 
 export interface VerifyFilters {
   from: Date
@@ -15,7 +15,7 @@ export interface TargetDrift {
   network: string
   metricoolId: number
   driftDetected: boolean
-  expected: { publicationDate: string; text: string }
+  expected: { publicationDate: MetricoolDateTimeInfo; text: string }
   /** null si Metricool ya no tiene el post (posible re-programación con otro id que no seguimos). */
   actual: MetricoolPost | null
 }
@@ -31,9 +31,7 @@ export interface VerifyResult {
  * lo que tenemos guardado — mitigación del "quirk" de Metricool que más
  * costó detectar esta sesión: tras un POST/PUT puede recolocar la hora (o
  * el día) de un post pendiente sin avisar en la respuesta (ver
- * ARCHITECTURE.md §5). El campo exacto que Metricool usa para la fecha en
- * su respuesta no está confirmado contra la API real esta sesión — ajustar
- * `actualPublicationDateOf` si el nombre de campo real difiere.
+ * ARCHITECTURE.md §5).
  */
 export async function verifyPublications(filters: VerifyFilters): Promise<VerifyResult> {
   const publicationsWithTargets = await listPublicationsWithTargets({
@@ -45,6 +43,8 @@ export async function verifyPublications(filters: VerifyFilters): Promise<Verify
   const drifts: TargetDrift[] = []
 
   for (const publication of publicationsWithTargets) {
+    const expectedDateTime = toMetricoolDateTimeInfo(publication.publicationDate, publication.timezone)
+
     for (const target of publication.targets) {
       if (target.metricoolId == null) continue
       if (filters.network && target.network !== filters.network) continue
@@ -57,15 +57,14 @@ export async function verifyPublications(filters: VerifyFilters): Promise<Verify
         actual = null
       }
 
-      const expectedDate = publication.publicationDate.toISOString()
-      const actualDate = actual ? actualPublicationDateOf(actual) : null
-      const driftDetected = !actual || actualDate !== expectedDate
+      const actualDateTime = actual ? parseDateTimeInfo(actual.publicationDate) : null
+      const driftDetected = !actualDateTime || !sameMinute(expectedDateTime, actualDateTime)
 
       await recordSyncLog({
         entityType: "PUBLICATION",
         entityId: publication.id,
         action: "VERIFY",
-        beforeState: { publicationDate: expectedDate, text: publication.text },
+        beforeState: { publicationDate: expectedDateTime, text: publication.text },
         afterState: actual,
         driftDetected,
       })
@@ -73,7 +72,7 @@ export async function verifyPublications(filters: VerifyFilters): Promise<Verify
       await updatePublicationRow(publication.id, {
         lastSyncedAt: new Date(),
         lastDriftNote: driftDetected
-          ? `Drift en target ${target.network} (metricoolId ${target.metricoolId}): esperado ${expectedDate}, encontrado ${actualDate ?? "post no encontrado"}.`
+          ? `Drift en target ${target.network} (metricoolId ${target.metricoolId}): esperado ${JSON.stringify(expectedDateTime)}, encontrado ${actualDateTime ? JSON.stringify(actualDateTime) : "post no encontrado"}.`
           : null,
       })
 
@@ -83,7 +82,7 @@ export async function verifyPublications(filters: VerifyFilters): Promise<Verify
         network: target.network,
         metricoolId: target.metricoolId,
         driftDetected,
-        expected: { publicationDate: expectedDate, text: publication.text },
+        expected: { publicationDate: expectedDateTime, text: publication.text },
         actual,
       })
     }
@@ -96,7 +95,24 @@ export async function verifyPublications(filters: VerifyFilters): Promise<Verify
   }
 }
 
-function actualPublicationDateOf(post: MetricoolPost): string | null {
-  const value = post.publicationDate
-  return typeof value === "string" ? value : null
+/**
+ * Metricool devuelve `publicationDate` como `{ dateTime, timezone }`
+ * (confirmado contra la API real, ver toMetricoolDateTimeInfo en
+ * lib/networks/instagram.ts) — no como string.
+ */
+function parseDateTimeInfo(value: unknown): MetricoolDateTimeInfo | null {
+  if (
+    value &&
+    typeof value === "object" &&
+    typeof (value as Partial<MetricoolDateTimeInfo>).dateTime === "string" &&
+    typeof (value as Partial<MetricoolDateTimeInfo>).timezone === "string"
+  ) {
+    return value as MetricoolDateTimeInfo
+  }
+  return null
+}
+
+/** Metricool trunca los segundos al guardar — comparar hasta el minuto evita falsos positivos de drift. */
+function sameMinute(a: MetricoolDateTimeInfo, b: MetricoolDateTimeInfo): boolean {
+  return a.timezone === b.timezone && a.dateTime.slice(0, 16) === b.dateTime.slice(0, 16)
 }

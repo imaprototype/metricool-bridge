@@ -12,6 +12,9 @@ const createPublicationSchema = z.object({
   assetIds: z.array(z.uuid()).min(1),
   text: z.string(),
   publicationDate: z.iso.datetime({ offset: true }).or(z.iso.datetime()),
+  // Zona IANA (p. ej. "Europe/Madrid") con la que Metricool interpreta
+  // publicationDate. Por defecto DEFAULT_TIMEZONE en lib/publications.ts.
+  timezone: z.string().min(1).optional(),
   targets: z.array(targetSchema).min(1),
 })
 
@@ -44,6 +47,7 @@ export async function POST(request: Request) {
       assetIds: parsed.data.assetIds,
       text: parsed.data.text,
       publicationDate: new Date(parsed.data.publicationDate),
+      timezone: parsed.data.timezone,
       targets: parsed.data.targets,
     })
     return NextResponse.json({ data: publication }, { status: 201 })

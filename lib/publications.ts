@@ -27,11 +27,16 @@ export interface PublicationTargetInput {
   collaborators?: string[]
 }
 
+// Debe coincidir con el default de la columna publications.timezone (db/schema.ts).
+export const DEFAULT_TIMEZONE = "Europe/Madrid"
+
 export interface CreatePublicationInput {
   format: PublicationFormat
   assetIds: string[]
   text: string
   publicationDate: Date
+  /** Zona IANA con la que se interpreta publicationDate al hablar con Metricool. */
+  timezone?: string
   targets: PublicationTargetInput[]
 }
 
@@ -86,6 +91,7 @@ function buildMetricoolPayload(params: {
   format: PublicationFormat
   text: string
   publicationDate: Date
+  timezone: string
   media: string[]
   collaborators?: string[]
 }): Record<string, unknown> {
@@ -97,7 +103,9 @@ function buildMetricoolPayload(params: {
 
   const payload: Record<string, unknown> = {
     text: params.text,
-    publicationDate: params.publicationDate.toISOString(),
+    // Metricool exige { dateTime, timezone }, no un string ISO — ver
+    // instagram.toMetricoolDateTimeInfo (confirmado contra la API real).
+    publicationDate: instagram.toMetricoolDateTimeInfo(params.publicationDate, params.timezone),
     providers: [{ network: params.network }],
     media: params.media,
     [`${params.network}Data`]: providerData,
@@ -117,41 +125,55 @@ export async function createPublication(input: CreatePublicationInput): Promise<
   if (input.assetIds.length === 0) throw new Error("Una publicación necesita al menos un asset.")
   if (input.targets.length === 0) throw new Error("Una publicación necesita al menos un target.")
 
+  const timezone = input.timezone ?? DEFAULT_TIMEZONE
   const media = await resolveMediaUrls(input.assetIds, input.format)
 
   const publication = await createPublicationRow({
     format: input.format,
     publicationDate: input.publicationDate,
+    timezone,
     text: input.text,
     assetIds: input.assetIds,
   })
 
+  // createPublication no es transaccional con la API de Metricool: si un
+  // createPost falla a mitad del bucle, sin este try/catch la fila de
+  // Publication quedaría huérfana en PENDING para siempre, sin reflejar el
+  // fallo (encontrado de verdad en el smoke test de la Fase 9 — un intento
+  // fallido dejó una fila así). Los targets que sí llegaron a crearse en
+  // Metricool antes del fallo se conservan (representan posts reales).
   const targets: PublicationTarget[] = []
-  for (const targetInput of input.targets) {
-    const client = networkClientFor(targetInput.network)
-    const normalizedMedia = await normalizeMediaForNetwork(media, targetInput.network)
-    const payload = buildMetricoolPayload({
-      network: targetInput.network,
-      format: input.format,
-      text: input.text,
-      publicationDate: input.publicationDate,
-      media: normalizedMedia,
-      collaborators: targetInput.collaborators,
-    })
+  try {
+    for (const targetInput of input.targets) {
+      const client = networkClientFor(targetInput.network)
+      const normalizedMedia = await normalizeMediaForNetwork(media, targetInput.network)
+      const payload = buildMetricoolPayload({
+        network: targetInput.network,
+        format: input.format,
+        text: input.text,
+        publicationDate: input.publicationDate,
+        timezone,
+        media: normalizedMedia,
+        collaborators: targetInput.collaborators,
+      })
 
-    const created = await client.createPost(payload)
+      const created = await client.createPost(payload)
 
-    const target = await createPublicationTarget({
-      publicationId: publication.id,
-      network: targetInput.network,
-      metricoolId: created.id,
-      collaborators: targetInput.collaborators ?? null,
-    })
-    targets.push(target)
+      const target = await createPublicationTarget({
+        publicationId: publication.id,
+        network: targetInput.network,
+        metricoolId: created.id,
+        collaborators: targetInput.collaborators ?? null,
+      })
+      targets.push(target)
 
-    for (const assetId of input.assetIds) {
-      await recordAssetUsage({ assetId, publicationId: publication.id, network: targetInput.network })
+      for (const assetId of input.assetIds) {
+        await recordAssetUsage({ assetId, publicationId: publication.id, network: targetInput.network })
+      }
     }
+  } catch (err) {
+    await updatePublicationRow(publication.id, { status: "ERROR" })
+    throw err
   }
 
   await updatePublicationRow(publication.id, { status: "PUBLISHED" })
@@ -163,6 +185,7 @@ export interface UpdatePublicationInput {
   text?: string
   assetIds?: string[]
   publicationDate?: Date
+  timezone?: string
 }
 
 export async function updatePublication(
@@ -174,11 +197,12 @@ export async function updatePublication(
 
   const text = input.text ?? existing.text
   const publicationDate = input.publicationDate ?? existing.publicationDate
+  const timezone = input.timezone ?? existing.timezone
   const assetIds = input.assetIds ?? existing.assetIds
 
   const media = await resolveMediaUrls(assetIds, existing.format)
 
-  const updated = await updatePublicationRow(id, { text, publicationDate, assetIds })
+  const updated = await updatePublicationRow(id, { text, publicationDate, timezone, assetIds })
   if (!updated) return undefined
 
   const existingTargets = await listTargetsForPublication(id)
@@ -197,6 +221,7 @@ export async function updatePublication(
       format: existing.format,
       text,
       publicationDate,
+      timezone,
       media: normalizedMedia,
       collaborators: target.collaborators ?? undefined,
     })
@@ -233,7 +258,7 @@ export interface CreateStoryInput {
   assetIds?: string[]
 }
 
-/** Crea una Story asociada a una publicación existente, reutilizando sus assets por defecto. */
+/** Crea una Story asociada a una publicación existente, reutilizando sus assets y zona horaria por defecto. */
 export async function createStoryForPublication(
   sourcePublicationId: string,
   input: CreateStoryInput
@@ -246,6 +271,7 @@ export async function createStoryForPublication(
     assetIds: input.assetIds ?? source.assetIds,
     text: input.text ?? source.text,
     publicationDate: input.publicationDate,
+    timezone: source.timezone,
     targets: [{ network: "instagram" }],
   })
 }
