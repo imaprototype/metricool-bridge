@@ -1,0 +1,149 @@
+import { relations } from "drizzle-orm"
+import { boolean, integer, jsonb, pgEnum, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core"
+
+// Ver ARCHITECTURE.md §3 para el modelo de dominio completo.
+
+export const assetKindEnum = pgEnum("asset_kind", ["IMAGE", "VIDEO"])
+export const assetStatusEnum = pgEnum("asset_status", ["ACTIVE", "ARCHIVED"])
+export const publicationFormatEnum = pgEnum("publication_format", [
+  "FEED_POST",
+  "CAROUSEL",
+  "STORY",
+  "REEL",
+  "VIDEO_POST",
+])
+export const publicationStatusEnum = pgEnum("publication_status", ["PENDING", "PUBLISHED", "ERROR"])
+export const syncLogEntityTypeEnum = pgEnum("sync_log_entity_type", ["PUBLICATION", "ASSET"])
+export const syncLogActionEnum = pgEnum("sync_log_action", ["CREATE", "UPDATE", "DELETE", "VERIFY"])
+
+export const brands = pgTable("brands", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  name: text("name").notNull(),
+  instagramHandle: text("instagram_handle"),
+  toneNotes: text("tone_notes"),
+  targetAudience: text("target_audience"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+})
+
+export const photographers = pgTable("photographers", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  name: text("name").notNull(),
+  instagramHandle: text("instagram_handle"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+})
+
+export const assets = pgTable("assets", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  kind: assetKindEnum("kind").notNull(),
+  originalBlobUrl: text("original_blob_url").notNull(),
+  // { feed: url, story: url, square: url, ... } — variantes generadas al subir (ver lib/images.ts)
+  variants: jsonb("variants").notNull().default({}),
+  brandId: uuid("brand_id")
+    .notNull()
+    .references(() => brands.id),
+  photographerId: uuid("photographer_id").references(() => photographers.id),
+  objectType: text("object_type").notNull(),
+  category: text("category").notNull(),
+  // Ficha del producto (tienda, web de la marca...) — CTA y contexto para la IA.
+  productUrl: text("product_url"),
+  // Post de referencia (Instagram u otra red) con buen engagement, para orientar
+  // el enfoque del copy/creatividad sin perder el tono de marca.
+  inspirationUrl: text("inspiration_url"),
+  shortDescription: text("short_description").notNull(),
+  targetAudience: text("target_audience"),
+  tags: text("tags").array().notNull().default([]),
+  sourceFilename: text("source_filename").notNull(),
+  uploadedBy: text("uploaded_by").notNull(),
+  uploadedAt: timestamp("uploaded_at", { withTimezone: true }).notNull().defaultNow(),
+  status: assetStatusEnum("status").notNull().default("ACTIVE"),
+})
+
+export const publications = pgTable("publications", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  format: publicationFormatEnum("format").notNull(),
+  publicationDate: timestamp("publication_date", { withTimezone: true }).notNull(),
+  text: text("text").notNull(),
+  // Referencias a Asset, 1 o varias según el formato (orden = orden del carrusel).
+  assetIds: uuid("asset_ids").array().notNull().default([]),
+  status: publicationStatusEnum("status").notNull().default("PENDING"),
+  lastSyncedAt: timestamp("last_synced_at", { withTimezone: true }),
+  lastDriftNote: text("last_drift_note"),
+})
+
+// Una fila por red donde se publica una Publication (ver ARCHITECTURE.md §3).
+// `publicationId` no aparece como campo explícito en el documento porque ahí
+// `targets` se describe como un array anidado bajo Publication — aquí se
+// normaliza como tabla propia con su FK, ya que es la traducción directa a
+// un modelo relacional.
+export const publicationTargets = pgTable("publication_targets", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  publicationId: uuid("publication_id")
+    .notNull()
+    .references(() => publications.id, { onDelete: "cascade" }),
+  network: text("network").notNull(),
+  // Muta en cada PUT a Metricool — null hasta la primera escritura exitosa.
+  metricoolId: integer("metricool_id"),
+  collaborators: text("collaborators").array(),
+  status: publicationStatusEnum("status").notNull().default("PENDING"),
+})
+
+// Se crea sola cuando un Asset entra en una Publication (una fila por red/target).
+export const assetUsages = pgTable("asset_usages", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  assetId: uuid("asset_id")
+    .notNull()
+    .references(() => assets.id),
+  publicationId: uuid("publication_id")
+    .notNull()
+    .references(() => publications.id, { onDelete: "cascade" }),
+  network: text("network").notNull(),
+  usedAt: timestamp("used_at", { withTimezone: true }).notNull().defaultNow(),
+})
+
+export const syncLogs = pgTable("sync_logs", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  entityType: syncLogEntityTypeEnum("entity_type").notNull(),
+  entityId: uuid("entity_id").notNull(),
+  action: syncLogActionEnum("action").notNull(),
+  beforeState: jsonb("before_state"),
+  afterState: jsonb("after_state"),
+  driftDetected: boolean("drift_detected").notNull().default(false),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+})
+
+export const brandsRelations = relations(brands, ({ many }) => ({
+  assets: many(assets),
+}))
+
+export const photographersRelations = relations(photographers, ({ many }) => ({
+  assets: many(assets),
+}))
+
+export const assetsRelations = relations(assets, ({ one, many }) => ({
+  brand: one(brands, { fields: [assets.brandId], references: [brands.id] }),
+  photographer: one(photographers, {
+    fields: [assets.photographerId],
+    references: [photographers.id],
+  }),
+  usages: many(assetUsages),
+}))
+
+export const publicationsRelations = relations(publications, ({ many }) => ({
+  targets: many(publicationTargets),
+  assetUsages: many(assetUsages),
+}))
+
+export const publicationTargetsRelations = relations(publicationTargets, ({ one }) => ({
+  publication: one(publications, {
+    fields: [publicationTargets.publicationId],
+    references: [publications.id],
+  }),
+}))
+
+export const assetUsagesRelations = relations(assetUsages, ({ one }) => ({
+  asset: one(assets, { fields: [assetUsages.assetId], references: [assets.id] }),
+  publication: one(publications, {
+    fields: [assetUsages.publicationId],
+    references: [publications.id],
+  }),
+}))
