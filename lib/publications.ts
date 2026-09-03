@@ -43,7 +43,7 @@ export interface CreatePublicationInput {
  * createPost/updatePost/deletePost/normalizeImageUrl no forman parte de
  * esa interfaz todavía).
  */
-function networkClientFor(network: string) {
+export function networkClientFor(network: string) {
   if (network === "instagram") return instagram
   throw new Error(`No hay cliente de API implementado todavía para la red "${network}".`)
 }
