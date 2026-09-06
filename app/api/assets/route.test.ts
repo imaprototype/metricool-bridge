@@ -24,7 +24,7 @@ describe("GET /api/assets", () => {
     vi.mocked(listAssetsWithFilters).mockResolvedValue({ data: [], page: 2, pageSize: 10, total: 0 })
 
     const url =
-      "http://localhost/api/assets?brand=b1&category=iluminacion&objectType=lampara&photographer=p1" +
+      "http://localhost/api/assets?brand=b1&objectType=lampara&photographer=p1" +
       "&tag=ceramica&kind=IMAGE&unusedSince=2026-01-01&neverUsed=false&page=2&pageSize=10"
 
     const res = await GET(new Request(url))
@@ -33,7 +33,6 @@ describe("GET /api/assets", () => {
     expect(res.status).toBe(200)
     expect(listAssetsWithFilters).toHaveBeenCalledWith({
       brandId: "b1",
-      category: "iluminacion",
       objectType: "lampara",
       photographerId: "p1",
       tag: "ceramica",
@@ -70,7 +69,7 @@ describe("POST /api/assets", () => {
               {
                 brandId: VALID_BRAND_ID,
                 objectType: "lámpara de mesa",
-                category: "iluminación",
+                photographerIds: [],
                 shortDescription: "Lámpara en cerámica.",
               },
             ],
@@ -137,7 +136,7 @@ describe("POST /api/assets", () => {
       body: buildFormData({
         payload: JSON.stringify({
           uploadedBy: "jm@norudsgn.com",
-          assets: [{ objectType: "x", category: "y", shortDescription: "z" }],
+          assets: [{ objectType: "x", shortDescription: "z" }],
         }),
       }),
     })

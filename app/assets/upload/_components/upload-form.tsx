@@ -14,16 +14,10 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import type { Brand } from "@/db/queries/brands"
 import type { Photographer } from "@/db/queries/photographers"
+import { CheckboxList } from "../../_components/checkbox-list"
 import { CreateEntityDialog } from "./create-entity-dialog"
 
-const fieldClassName =
-  "h-8 rounded-lg border border-input bg-transparent px-2.5 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30"
-
 interface SharedFields {
-  brandId: string
-  photographerId: string
-  category: string
-  targetAudience: string
   tags: string
 }
 
@@ -60,13 +54,15 @@ export function UploadForm({
 }) {
   const [brands, setBrands] = useState(initialBrands)
   const [photographers, setPhotographers] = useState(initialPhotographers)
+  const [brandIds, setBrandIds] = useState<string[]>([])
+  const [photographerIds, setPhotographerIds] = useState<string[]>([])
   const [selectedFiles, setSelectedFiles] = useState<File[]>([])
   const [dragOver, setDragOver] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const { register, control, getValues, reset } = useForm<FormValues>({
     defaultValues: {
-      shared: { brandId: "", photographerId: "", category: "", targetAudience: "", tags: "" },
+      shared: { tags: "" },
       files: [],
     },
   })
@@ -79,6 +75,10 @@ export function UploadForm({
     if (selectedFiles.length === 0) {
       return { error: "Selecciona al menos un archivo." }
     }
+    const brandId = brandIds[0]
+    if (!brandId) {
+      return { error: "Elige una marca." }
+    }
 
     const values = getValues()
     const fd = new FormData()
@@ -87,14 +87,12 @@ export function UploadForm({
       "metadata",
       JSON.stringify(
         values.files.map((f) => ({
-          brandId: values.shared.brandId,
-          photographerId: values.shared.photographerId || undefined,
-          category: values.shared.category,
+          brandId,
+          photographerIds,
           objectType: f.objectType,
           productUrl: f.productUrl || undefined,
           inspirationUrl: f.inspirationUrl || undefined,
           shortDescription: f.shortDescription,
-          targetAudience: values.shared.targetAudience || undefined,
           tags: mergeTags(values.shared.tags, f.tags),
         }))
       )
@@ -103,6 +101,8 @@ export function UploadForm({
     const result = await uploadAssetsAction(prev, fd)
     if (!result.error) {
       setSelectedFiles([])
+      setBrandIds([])
+      setPhotographerIds([])
       reset()
       if (fileInputRef.current) fileInputRef.current.value = ""
     }
@@ -134,31 +134,31 @@ export function UploadForm({
       <section className="flex flex-col gap-4 rounded-xl border p-4">
         <h2 className="font-heading text-sm font-medium">Metadata compartida</h2>
         <p className="text-xs text-muted-foreground">
-          Se aplica por defecto a todos los archivos de esta tanda — editable por archivo más abajo.
+          Se aplica a todos los archivos de esta tanda.
         </p>
-        <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div className="flex flex-col gap-1.5">
             <div className="flex items-center justify-between">
-              <Label htmlFor="shared-brand">Marca</Label>
+              <Label>Marca</Label>
               <CreateEntityDialog
                 label="Marca"
                 action={createBrandAction}
                 onCreated={(brand: Brand) => setBrands((prev) => [...prev, brand])}
               />
             </div>
-            <select id="shared-brand" {...register("shared.brandId")} required className={fieldClassName}>
-              <option value="">Selecciona…</option>
-              {brands.map((brand) => (
-                <option key={brand.id} value={brand.id}>
-                  {brand.name}
-                </option>
-              ))}
-            </select>
+            <CheckboxList
+              name="brandId"
+              items={brands}
+              selectedIds={brandIds}
+              onChange={setBrandIds}
+              multiple={false}
+              emptyLabel="No hay marcas dadas de alta todavía."
+            />
           </div>
 
           <div className="flex flex-col gap-1.5">
             <div className="flex items-center justify-between">
-              <Label htmlFor="shared-photographer">Fotógrafo</Label>
+              <Label>Fotógrafos</Label>
               <CreateEntityDialog
                 label="Fotógrafo"
                 action={createPhotographerAction}
@@ -167,27 +167,17 @@ export function UploadForm({
                 }
               />
             </div>
-            <select id="shared-photographer" {...register("shared.photographerId")} className={fieldClassName}>
-              <option value="">Sin especificar</option>
-              {photographers.map((photographer) => (
-                <option key={photographer.id} value={photographer.id}>
-                  {photographer.name}
-                </option>
-              ))}
-            </select>
+            <CheckboxList
+              name="photographerIds"
+              items={photographers}
+              selectedIds={photographerIds}
+              onChange={setPhotographerIds}
+              multiple
+              emptyLabel="No hay fotógrafos dados de alta todavía."
+            />
           </div>
 
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="shared-category">Categoría</Label>
-            <Input id="shared-category" {...register("shared.category")} required />
-          </div>
-
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="shared-audience">Público objetivo</Label>
-            <Input id="shared-audience" {...register("shared.targetAudience")} />
-          </div>
-
-          <div className="col-span-2 flex flex-col gap-1.5 sm:col-span-4">
+          <div className="col-span-1 flex flex-col gap-1.5 sm:col-span-2">
             <Label htmlFor="shared-tags">Tags (separados por coma)</Label>
             <Input id="shared-tags" {...register("shared.tags")} />
           </div>

@@ -5,13 +5,11 @@ import { getAssetWithUsages } from "@/lib/assets"
 
 const updateAssetSchema = z.object({
   brandId: z.uuid().optional(),
-  photographerId: z.uuid().nullable().optional(),
+  photographerIds: z.array(z.uuid()).optional(),
   objectType: z.string().min(1).optional(),
-  category: z.string().min(1).optional(),
   productUrl: z.url().nullable().optional(),
   inspirationUrl: z.url().nullable().optional(),
   shortDescription: z.string().min(1).optional(),
-  targetAudience: z.string().nullable().optional(),
   tags: z.array(z.string()).optional(),
 })
 

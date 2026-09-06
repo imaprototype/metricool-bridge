@@ -1,13 +1,26 @@
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
+import type { Photographer } from "@/db/queries/photographers"
 import type { AssetWithUsages } from "@/lib/assets"
 import { archiveAssetAction } from "@/app/assets/actions"
 import { EditAssetSheet } from "./edit-asset-sheet"
 
-export function AssetCard({ asset, brandName }: { asset: AssetWithUsages; brandName: string }) {
+export function AssetCard({
+  asset,
+  brandName,
+  photographers,
+}: {
+  asset: AssetWithUsages
+  brandName: string
+  photographers: Photographer[]
+}) {
   const variants = asset.variants as Record<string, string>
   const thumbnailUrl = variants.thumbnail ?? variants.FEED_POST ?? Object.values(variants)[0]
+  const photographerNames = photographers
+    .filter((p) => asset.photographerIds.includes(p.id))
+    .map((p) => p.name)
+    .join(", ")
 
   return (
     <Card size="sm" className="overflow-hidden">
@@ -22,7 +35,8 @@ export function AssetCard({ asset, brandName }: { asset: AssetWithUsages; brandN
       <CardHeader>
         <CardTitle className="line-clamp-1">{asset.objectType}</CardTitle>
         <p className="text-xs text-muted-foreground">
-          {brandName} · {asset.category}
+          {brandName}
+          {photographerNames ? ` · ${photographerNames}` : ""}
         </p>
       </CardHeader>
       <CardContent className="flex flex-col gap-2">
@@ -39,7 +53,7 @@ export function AssetCard({ asset, brandName }: { asset: AssetWithUsages; brandN
         </p>
       </CardContent>
       <CardFooter className="flex justify-between gap-2">
-        <EditAssetSheet asset={asset} />
+        <EditAssetSheet asset={asset} photographers={photographers} />
         <form action={archiveAssetAction.bind(null, asset.id)}>
           <Button variant="destructive" size="sm" type="submit">
             Archivar

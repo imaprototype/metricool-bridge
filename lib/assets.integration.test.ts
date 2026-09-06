@@ -56,7 +56,7 @@ describe.skipIf(!process.env.RUN_DB_INTEGRATION_TESTS)("lib/assets (integración
         {
           brandId: brand.id,
           objectType: "lámpara de mesa",
-          category: "iluminación",
+          photographerIds: ["11111111-1111-4111-8111-111111111111"],
           inspirationUrl: "https://instagram.com/p/inspiracion123",
           shortDescription: "Lámpara en cerámica.",
           tags: ["ceramica"],
@@ -67,9 +67,16 @@ describe.skipIf(!process.env.RUN_DB_INTEGRATION_TESTS)("lib/assets (integración
 
     expect(created.kind).toBe("IMAGE")
     expect(created.inspirationUrl).toBe("https://instagram.com/p/inspiracion123")
+    expect(created.photographerIds).toEqual(["11111111-1111-4111-8111-111111111111"])
     expect(Object.keys(created.variants as object).sort()).toEqual(
       ["CAROUSEL", "FEED_POST", "REEL", "STORY", "VIDEO_POST"].sort()
     )
+
+    const byPhotographer = await listAssetsWithFilters({
+      brandId: brand.id,
+      photographerId: "11111111-1111-4111-8111-111111111111",
+    })
+    expect(byPhotographer.data.map((a) => a.id)).toEqual([created.id])
   })
 
   it("listAssetsWithFilters filtra por tag, brand y neverUsed, y pagina", async () => {
@@ -83,7 +90,6 @@ describe.skipIf(!process.env.RUN_DB_INTEGRATION_TESTS)("lib/assets (integración
         {
           brandId: brand.id,
           objectType: "silla",
-          category: "mobiliario",
           shortDescription: "Silla de madera.",
           tags: ["madera-test"],
         },
@@ -98,7 +104,6 @@ describe.skipIf(!process.env.RUN_DB_INTEGRATION_TESTS)("lib/assets (integración
         {
           brandId: brand.id,
           objectType: "cojín",
-          category: "textil",
           shortDescription: "Cojín de lino.",
         },
       ],

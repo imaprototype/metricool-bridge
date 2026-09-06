@@ -1,0 +1,1 @@
+ALTER TABLE "assets" ADD COLUMN "photographer_ids" uuid[] DEFAULT '{}' NOT NULL;

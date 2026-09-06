@@ -13,7 +13,6 @@ export default async function AssetsPage(props: PageProps<"/assets">) {
 
   const brand = firstParam(searchParams.brand)
   const photographer = firstParam(searchParams.photographer)
-  const category = firstParam(searchParams.category)
   const objectType = firstParam(searchParams.objectType)
   const tag = firstParam(searchParams.tag)
   const kindParam = firstParam(searchParams.kind)
@@ -26,7 +25,6 @@ export default async function AssetsPage(props: PageProps<"/assets">) {
     listAssetsWithFilters({
       brandId: brand,
       photographerId: photographer,
-      category,
       objectType,
       tag,
       kind,
@@ -42,7 +40,7 @@ export default async function AssetsPage(props: PageProps<"/assets">) {
       <AssetFilters
         brands={brands}
         photographers={photographers}
-        current={{ brand, photographer, category, objectType, tag, kind, neverUsed: neverUsed ? "true" : undefined }}
+        current={{ brand, photographer, objectType, tag, kind, neverUsed: neverUsed ? "true" : undefined }}
       />
 
       <p className="mb-4 text-sm text-muted-foreground">{result.total} assets</p>
@@ -52,7 +50,12 @@ export default async function AssetsPage(props: PageProps<"/assets">) {
       ) : (
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
           {result.data.map((asset) => (
-            <AssetCard key={asset.id} asset={asset} brandName={brandsById.get(asset.brandId) ?? "—"} />
+            <AssetCard
+              key={asset.id}
+              asset={asset}
+              brandName={brandsById.get(asset.brandId) ?? "—"}
+              photographers={photographers}
+            />
           ))}
         </div>
       )}

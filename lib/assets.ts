@@ -11,13 +11,11 @@ import { getNetworkAdapter } from "@/lib/networks"
 
 export interface AssetMetadataInput {
   brandId: string
-  photographerId?: string
+  photographerIds?: string[]
   objectType: string
-  category: string
   productUrl?: string
   inspirationUrl?: string
   shortDescription: string
-  targetAudience?: string
   tags?: string[]
 }
 
@@ -51,13 +49,11 @@ async function uploadSingleAsset(file: File, meta: AssetMetadataInput, uploadedB
     originalBlobUrl: original.url,
     variants,
     brandId: meta.brandId,
-    photographerId: meta.photographerId,
+    photographerIds: meta.photographerIds ?? [],
     objectType: meta.objectType,
-    category: meta.category,
     productUrl: meta.productUrl,
     inspirationUrl: meta.inspirationUrl,
     shortDescription: meta.shortDescription,
-    targetAudience: meta.targetAudience,
     tags: meta.tags ?? [],
     sourceFilename: file.name,
     uploadedBy,
@@ -92,8 +88,8 @@ async function generateVideoVariants(buffer: Buffer): Promise<Record<string, str
 
 export interface ListAssetsFilters {
   brandId?: string
-  category?: string
   objectType?: string
+  /** Coincide si este fotógrafo está entre los de photographerIds. */
   photographerId?: string
   tag?: string
   kind?: "IMAGE" | "VIDEO"
@@ -124,9 +120,10 @@ export async function listAssetsWithFilters(filters: ListAssetsFilters = {}): Pr
 
   const conditions = [eq(assets.status, "ACTIVE")]
   if (filters.brandId) conditions.push(eq(assets.brandId, filters.brandId))
-  if (filters.category) conditions.push(eq(assets.category, filters.category))
   if (filters.objectType) conditions.push(eq(assets.objectType, filters.objectType))
-  if (filters.photographerId) conditions.push(eq(assets.photographerId, filters.photographerId))
+  if (filters.photographerId) {
+    conditions.push(sql`${filters.photographerId} = ANY(${assets.photographerIds})`)
+  }
   if (filters.kind) conditions.push(eq(assets.kind, filters.kind))
   if (filters.tag) conditions.push(sql`${filters.tag} = ANY(${assets.tags})`)
 

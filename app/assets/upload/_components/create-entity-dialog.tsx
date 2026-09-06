@@ -48,8 +48,12 @@ export function CreateEntityDialog<T>({ label, action, onCreated }: CreateEntity
         </DialogHeader>
         <form action={formAction} className="flex flex-col gap-4">
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor={`new-${label}`}>Nombre</Label>
-            <Input id={`new-${label}`} name="name" required autoFocus />
+            <Label htmlFor={`new-${label}-name`}>Nombre</Label>
+            <Input id={`new-${label}-name`} name="name" required autoFocus />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor={`new-${label}-instagram`}>Red social (Instagram, opcional)</Label>
+            <Input id={`new-${label}-instagram`} name="instagramHandle" placeholder="@usuario" />
           </div>
           {state.error ? <p className="text-sm text-destructive">{state.error}</p> : null}
           <DialogFooter>

@@ -39,15 +39,6 @@ export function AssetFilters({
         </select>
       </Field>
 
-      <Field label="Categoría">
-        <input
-          type="text"
-          name="category"
-          defaultValue={current.category ?? ""}
-          className={fieldClassName}
-        />
-      </Field>
-
       <Field label="Tipo de objeto">
         <input
           type="text"

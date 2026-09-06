@@ -4,6 +4,8 @@ API propia desplegada en Vercel que actúa como intermediaria entre Claude y Met
 
 Ver [ARCHITECTURE.md](./ARCHITECTURE.md) para el contexto completo: por qué existe este proyecto, modelo de dominio, integración con Metricool, diseño de la API y plan de implementación por fases.
 
+La referencia de endpoints para agentes que consumen esta API vive en [public/API.md](./public/API.md), servida en producción en `/API.md` — mantenerla al día es lo que le permite a otro agente de Claude consultarla directamente en vez de que se le pase a mano en cada sesión.
+
 ## Desarrollo
 
 ```bash

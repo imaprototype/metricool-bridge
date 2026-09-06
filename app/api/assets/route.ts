@@ -4,13 +4,11 @@ import { listAssetsWithFilters, uploadAssets } from "@/lib/assets"
 
 const assetMetadataSchema = z.object({
   brandId: z.uuid(),
-  photographerId: z.uuid().optional(),
+  photographerIds: z.array(z.uuid()).optional(),
   objectType: z.string().min(1),
-  category: z.string().min(1),
   productUrl: z.url().optional(),
   inspirationUrl: z.url().optional(),
   shortDescription: z.string().min(1),
-  targetAudience: z.string().min(1).optional(),
   tags: z.array(z.string()).optional(),
 })
 
@@ -37,7 +35,6 @@ export async function GET(request: Request) {
 
   const result = await listAssetsWithFilters({
     brandId: params.get("brand") ?? undefined,
-    category: params.get("category") ?? undefined,
     objectType: params.get("objectType") ?? undefined,
     photographerId: params.get("photographer") ?? undefined,
     tag: params.get("tag") ?? undefined,

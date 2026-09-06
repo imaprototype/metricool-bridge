@@ -15,12 +15,21 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet"
 import { Textarea } from "@/components/ui/textarea"
+import type { Photographer } from "@/db/queries/photographers"
 import type { AssetWithUsages } from "@/lib/assets"
+import { CheckboxList } from "./checkbox-list"
 
 const initialState: UpdateAssetActionState = {}
 
-export function EditAssetSheet({ asset }: { asset: AssetWithUsages }) {
+export function EditAssetSheet({
+  asset,
+  photographers,
+}: {
+  asset: AssetWithUsages
+  photographers: Photographer[]
+}) {
   const [open, setOpen] = useState(false)
+  const [photographerIds, setPhotographerIds] = useState<string[]>(asset.photographerIds)
   const action = updateAssetAction.bind(null, asset.id)
   const [state, formAction, pending] = useActionState(async (prev: UpdateAssetActionState, fd: FormData) => {
     const result = await action(prev, fd)
@@ -44,7 +53,6 @@ export function EditAssetSheet({ asset }: { asset: AssetWithUsages }) {
         </SheetHeader>
         <form action={formAction} className="flex flex-col gap-4 overflow-y-auto px-4">
           <Field label="Tipo de objeto" name="objectType" defaultValue={asset.objectType} required />
-          <Field label="Categoría" name="category" defaultValue={asset.category} required />
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="shortDescription">Descripción breve</Label>
             <Textarea
@@ -61,11 +69,17 @@ export function EditAssetSheet({ asset }: { asset: AssetWithUsages }) {
             defaultValue={asset.inspirationUrl ?? ""}
             type="url"
           />
-          <Field
-            label="Público objetivo"
-            name="targetAudience"
-            defaultValue={asset.targetAudience ?? ""}
-          />
+          <div className="flex flex-col gap-1.5">
+            <Label>Fotógrafos</Label>
+            <CheckboxList
+              name="photographerIds"
+              items={photographers}
+              selectedIds={photographerIds}
+              onChange={setPhotographerIds}
+              multiple
+              emptyLabel="No hay fotógrafos dados de alta todavía."
+            />
+          </div>
           <Field label="Tags (separados por coma)" name="tags" defaultValue={asset.tags.join(", ")} />
           {state.error ? <p className="text-sm text-destructive">{state.error}</p> : null}
           <SheetFooter className="px-0">

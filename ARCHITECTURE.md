@@ -57,14 +57,12 @@ Asset
   kind                "IMAGE" | "VIDEO"
   originalBlobUrl     string            // archivo tal cual se subió
   variants            json              // { feed: url, story: url, square: url, ... } generadas al subir
-  brandId             uuid              // FK a Brand
-  photographerId      uuid?             // FK a Photographer
+  brandId             uuid              // FK a Brand — una sola marca por asset
+  photographerIds     uuid[]            // 0 o varios fotógrafos — sin FK real (array, igual que tags/assetIds en esta app)
   objectType           string           // "lámpara de mesa", "silla"...
-  category            string            // "iluminación", "mobiliario", "textil"...
   productUrl           string?           // ficha del producto (tienda, web de la marca...) — para CTA y contexto de la IA
   inspirationUrl       string?           // post de referencia (Instagram u otra red) con buen engagement, para orientar el enfoque del copy/creatividad sin perder el tono de marca
   shortDescription    text              // para que la IA redacte el copy — lo que hoy me cuentas tú a mano
-  targetAudience       text?             // si difiere del de la marca
   tags                 string[]
   sourceFilename       string            // trazabilidad del archivo original
   uploadedBy            string
@@ -114,7 +112,7 @@ Cambios clave respecto a la v1: `MediaAsset` pasa a ser `Asset`, con toda la met
 
 **Subida (UI web, `/assets/upload`):**
 - Selector de archivos múltiple (fotos y/o vídeos, drag-and-drop).
-- Un bloque de **metadata compartida**, aplicable a toda la tanda subida a la vez: marca (selector sobre `Brand`, con opción de crear una nueva), fotógrafo (selector sobre `Photographer`, con opción de crear uno nuevo), categoría, público objetivo, tags.
+- Un bloque de **metadata compartida**, aplicable a toda la tanda subida a la vez: marca (checklist de selección única sobre `Brand`, con opción de crear una nueva), fotógrafo/s (checklist de selección múltiple sobre `Photographer`, con opción de crear uno nuevo), tags.
 - Por cada archivo de la tanda, campos que normalmente varían pieza a pieza: tipo de objeto, URL del producto (ficha en la tienda o web de la marca), URL de inspiración (post de referencia con buen engagement), descripción breve para la IA, tags adicionales — con la metadata compartida ya rellenada por defecto y editable individualmente.
 - Al confirmar: cada archivo sube a Vercel Blob, se generan las variantes por red (ver abajo) y se crea un `Asset` por archivo.
 
@@ -122,7 +120,7 @@ Cambios clave respecto a la v1: `MediaAsset` pasa a ser `Asset`, con toda la met
 Un catálogo de ratios por red, hoy solo Instagram (feed 4:5 = 1080×1440, story 9:16 exacto = 1080×1920), ampliable según el catálogo de redes de §5 (p. ej. LinkedIn usa otro ratio de feed). Se generan las variantes conocidas en el momento de subir; si más adelante se activa una red nueva, un job puede rellenar variantes que falten para assets ya existentes sin volver a pedir el archivo original.
 
 **Consulta (lo que yo uso al redactar contenido):**
-`GET /api/assets` con filtros — por marca, categoría, tipo de objeto, fotógrafo, tag, rango de fechas de subida, y muy especialmente `unusedSince` / `neverUsed` para poder proponerte variedad en vez de repetir siempre el mismo material. La respuesta incluye toda la metadata (incluida `shortDescription`, `productUrl`, `inspirationUrl`, tono y público objetivo de la marca) y el historial de uso (`AssetUsage`), para que al escribir el copy tenga contexto real en vez de adivinarlo por el nombre del archivo — `productUrl` además sirve como referencia para el CTA o el enlace en bio cuando toque, e `inspirationUrl` como referencia de enfoque/tono de un post ajeno con buen engagement, adaptado siempre a la identidad de marca.
+`GET /api/assets` con filtros — por marca, tipo de objeto, fotógrafo, tag, rango de fechas de subida, y muy especialmente `unusedSince` / `neverUsed` para poder proponerte variedad en vez de repetir siempre el mismo material. La respuesta incluye toda la metadata (incluida `shortDescription`, `productUrl`, `inspirationUrl`, tono y público objetivo de la marca) y el historial de uso (`AssetUsage`), para que al escribir el copy tenga contexto real en vez de adivinarlo por el nombre del archivo — `productUrl` además sirve como referencia para el CTA o el enlace en bio cuando toque, e `inspirationUrl` como referencia de enfoque/tono de un post ajeno con buen engagement, adaptado siempre a la identidad de marca.
 
 **Registro de uso:** no hace falta que nadie lo marque a mano — se crea una fila en `AssetUsage` automáticamente cada vez que un `Asset` entra en el `assetIds` de una `Publication` nueva, una por cada red (`target`) donde se publique.
 
@@ -189,7 +187,7 @@ Todas bajo `x-api-key` propio.
 | GET | `/api/health` | Comprueba token de Metricool válido y DB accesible |
 | **Assets** | | |
 | POST | `/api/assets` | Sube uno o varios archivos (`multipart/form-data`) + metadata compartida y por archivo; genera variantes y crea los `Asset` |
-| GET | `/api/assets?brand=&category=&objectType=&photographer=&tag=&unusedSince=&kind=` | Lista assets con toda su metadata e historial de uso, paginado |
+| GET | `/api/assets?brand=&objectType=&photographer=&tag=&unusedSince=&kind=` | Lista assets con toda su metadata e historial de uso, paginado |
 | GET | `/api/assets/:id` | Detalle de un asset, incluida su `AssetUsage` |
 | PATCH | `/api/assets/:id` | Edita metadata |
 | DELETE | `/api/assets/:id` | Archiva (no borra el blob salvo que se pida explícitamente) |
@@ -273,7 +271,7 @@ Schema completo del §3 (`Brand`, `Photographer`, `Asset`, `AssetUsage`, `Public
 Endpoints de `/api/assets`, `/api/brands`, `/api/photographers` del §6. Subida `multipart/form-data` con metadata compartida + por archivo. Generación de variantes al subir.
 
 **Fase 5 — Gestor de assets: UI web**
-`/assets` (grid + filtros) y `/assets/upload` (subida múltiple con formulario de metadata), construidos con componentes de shadcn/ui: `Table`/`Card` para el grid, `Select`/`Combobox` para elegir marca y fotógrafo existentes (con opción de crear uno nuevo inline), `Dialog` o `Sheet` para editar metadata de un asset, `Form` (con `react-hook-form` + `zod`, patrón estándar de shadcn) para el formulario de subida, y un dropzone de archivos múltiples. Login simple para proteger la subida.
+`/assets` (grid + filtros) y `/assets/upload` (subida múltiple con formulario de metadata), construidos con componentes de shadcn/ui: `Table`/`Card` para el grid, checklists (`Checkbox`) para elegir marca (selección única) y fotógrafo/s (selección múltiple) existentes, con opción de crear uno nuevo inline, `Dialog` o `Sheet` para editar metadata de un asset, `Form` (con `react-hook-form` + `zod`) para el formulario de subida, y un dropzone de archivos múltiples. Login simple para proteger la subida.
 
 **Fase 6 — Endpoints de publicaciones**
 `/api/publications` y derivados, usando el adaptador de Instagram. Registro automático de `AssetUsage` al crear una publicación.

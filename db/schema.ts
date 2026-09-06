@@ -41,16 +41,15 @@ export const assets = pgTable("assets", {
   brandId: uuid("brand_id")
     .notNull()
     .references(() => brands.id),
-  photographerId: uuid("photographer_id").references(() => photographers.id),
+  // 0 o varios fotógrafos — array sin FK real, igual que tags/assetIds en esta app.
+  photographerIds: uuid("photographer_ids").array().notNull().default([]),
   objectType: text("object_type").notNull(),
-  category: text("category").notNull(),
   // Ficha del producto (tienda, web de la marca...) — CTA y contexto para la IA.
   productUrl: text("product_url"),
   // Post de referencia (Instagram u otra red) con buen engagement, para orientar
   // el enfoque del copy/creatividad sin perder el tono de marca.
   inspirationUrl: text("inspiration_url"),
   shortDescription: text("short_description").notNull(),
-  targetAudience: text("target_audience"),
   tags: text("tags").array().notNull().default([]),
   sourceFilename: text("source_filename").notNull(),
   uploadedBy: text("uploaded_by").notNull(),
@@ -121,16 +120,10 @@ export const brandsRelations = relations(brands, ({ many }) => ({
   assets: many(assets),
 }))
 
-export const photographersRelations = relations(photographers, ({ many }) => ({
-  assets: many(assets),
-}))
-
 export const assetsRelations = relations(assets, ({ one, many }) => ({
   brand: one(brands, { fields: [assets.brandId], references: [brands.id] }),
-  photographer: one(photographers, {
-    fields: [assets.photographerId],
-    references: [photographers.id],
-  }),
+  // photographerIds es un array sin FK real (igual que tags) — sin relation
+  // de drizzle, se resuelve a mano cuando haga falta el nombre del fotógrafo.
   usages: many(assetUsages),
 }))
 

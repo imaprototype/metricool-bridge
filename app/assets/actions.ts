@@ -15,12 +15,11 @@ export async function archiveAssetAction(id: string): Promise<void> {
 
 const updateAssetSchema = z.object({
   objectType: z.string().min(1),
-  category: z.string().min(1),
   productUrl: z.union([z.url(), z.literal("")]).optional(),
   inspirationUrl: z.union([z.url(), z.literal("")]).optional(),
   shortDescription: z.string().min(1),
-  targetAudience: z.string().optional(),
   tags: z.string().optional(),
+  photographerIds: z.array(z.uuid()),
 })
 
 export interface UpdateAssetActionState {
@@ -32,18 +31,20 @@ export async function updateAssetAction(
   _prevState: UpdateAssetActionState,
   formData: FormData
 ): Promise<UpdateAssetActionState> {
-  const parsed = updateAssetSchema.safeParse(Object.fromEntries(formData))
+  const parsed = updateAssetSchema.safeParse({
+    ...Object.fromEntries(formData),
+    photographerIds: formData.getAll("photographerIds"),
+  })
   if (!parsed.success) {
     return { error: "Revisa los campos: " + z.prettifyError(parsed.error) }
   }
 
   await updateAsset(id, {
     objectType: parsed.data.objectType,
-    category: parsed.data.category,
     productUrl: parsed.data.productUrl || null,
     inspirationUrl: parsed.data.inspirationUrl || null,
     shortDescription: parsed.data.shortDescription,
-    targetAudience: parsed.data.targetAudience || null,
+    photographerIds: parsed.data.photographerIds,
     tags: parsed.data.tags
       ? parsed.data.tags.split(",").map((tag) => tag.trim()).filter(Boolean)
       : [],
@@ -53,7 +54,10 @@ export async function updateAssetAction(
   return {}
 }
 
-const createBrandSchema = z.object({ name: z.string().min(1) })
+const createBrandSchema = z.object({
+  name: z.string().min(1),
+  instagramHandle: z.string().optional(),
+})
 
 export interface CreateBrandActionState {
   error?: string
@@ -66,13 +70,19 @@ export async function createBrandAction(
 ): Promise<CreateBrandActionState> {
   const parsed = createBrandSchema.safeParse(Object.fromEntries(formData))
   if (!parsed.success) return { error: "El nombre de la marca es obligatorio." }
-  const created = await createBrand({ name: parsed.data.name })
+  const created = await createBrand({
+    name: parsed.data.name,
+    instagramHandle: parsed.data.instagramHandle || undefined,
+  })
   revalidatePath("/assets")
   revalidatePath("/assets/upload")
   return { created }
 }
 
-const createPhotographerSchema = z.object({ name: z.string().min(1) })
+const createPhotographerSchema = z.object({
+  name: z.string().min(1),
+  instagramHandle: z.string().optional(),
+})
 
 export interface CreatePhotographerActionState {
   error?: string
@@ -85,7 +95,10 @@ export async function createPhotographerAction(
 ): Promise<CreatePhotographerActionState> {
   const parsed = createPhotographerSchema.safeParse(Object.fromEntries(formData))
   if (!parsed.success) return { error: "El nombre del fotógrafo es obligatorio." }
-  const created = await createPhotographer({ name: parsed.data.name })
+  const created = await createPhotographer({
+    name: parsed.data.name,
+    instagramHandle: parsed.data.instagramHandle || undefined,
+  })
   revalidatePath("/assets")
   revalidatePath("/assets/upload")
   return { created }
