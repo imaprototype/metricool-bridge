@@ -144,6 +144,13 @@ describe("createPublication", () => {
       network: "instagram",
     })
     expect(result.targets).toHaveLength(1)
+
+    // Bug real reportado por el usuario: un createPost que no lanza solo
+    // confirma que Metricool aceptó programar el post, no que ya esté
+    // publicado — el status raíz debe seguir siendo PENDING, igual que el
+    // del target, no forzarse a PUBLISHED.
+    expect(result.status).toBe("PENDING")
+    expect(updatePublicationRow).not.toHaveBeenCalled()
   })
 
   it("marca autoPublish y type STORY para Stories", async () => {

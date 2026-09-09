@@ -176,9 +176,12 @@ export async function createPublication(input: CreatePublicationInput): Promise<
     throw err
   }
 
-  await updatePublicationRow(publication.id, { status: "PUBLISHED" })
-
-  return { ...publication, status: "PUBLISHED", targets }
+  // `createPost` que no lanza solo confirma que Metricool aceptó programar
+  // el post — no que ya se haya publicado de verdad. La fila ya nació en
+  // PENDING (default de la tabla, igual que cada target) y así se queda;
+  // pasar a PUBLISHED es cosa de /api/verify (o de un futuro sync) cuando
+  // confirme que Metricool lo ha publicado realmente.
+  return { ...publication, targets }
 }
 
 export interface UpdatePublicationInput {
