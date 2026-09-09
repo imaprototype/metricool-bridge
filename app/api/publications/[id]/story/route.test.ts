@@ -36,7 +36,7 @@ describe("POST /api/publications/:id/story", () => {
     expect(createStoryForPublication).toHaveBeenCalledWith("pub-1", {
       publicationDate: new Date("2026-09-10T10:00:00.000Z"),
       text: undefined,
-      assetIds: undefined,
+      imageIds: undefined,
     })
   })
 

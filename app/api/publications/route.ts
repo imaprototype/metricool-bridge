@@ -9,7 +9,10 @@ const targetSchema = z.object({
 
 const createPublicationSchema = z.object({
   format: z.enum(["FEED_POST", "CAROUSEL", "STORY", "REEL", "VIDEO_POST"]),
-  assetIds: z.array(z.uuid()).min(1),
+  assetId: z.uuid(),
+  // Qué imágenes de la ficha usar, en orden. Si se omite: portada para
+  // formatos de una imagen, todas para CAROUSEL.
+  imageIds: z.array(z.uuid()).optional(),
   text: z.string(),
   publicationDate: z.iso.datetime({ offset: true }).or(z.iso.datetime()),
   // Zona IANA (p. ej. "Europe/Madrid") con la que Metricool interpreta
@@ -44,7 +47,8 @@ export async function POST(request: Request) {
   try {
     const publication = await createPublication({
       format: parsed.data.format,
-      assetIds: parsed.data.assetIds,
+      assetId: parsed.data.assetId,
+      imageIds: parsed.data.imageIds,
       text: parsed.data.text,
       publicationDate: new Date(parsed.data.publicationDate),
       timezone: parsed.data.timezone,

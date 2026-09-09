@@ -1,8 +1,9 @@
 import { randomUUID } from "node:crypto"
 import { and, desc, eq, inArray, sql } from "drizzle-orm"
 import { getDb } from "@/lib/db"
-import { assetUsages, assets } from "@/db/schema"
-import { createAsset, type Asset, type NewAsset } from "@/db/queries/assets"
+import { assetImages, assetUsages, assets } from "@/db/schema"
+import { createAsset, type Asset } from "@/db/queries/assets"
+import { createAssetImage, listImagesForAssets, type AssetImage } from "@/db/queries/assetImages"
 import type { AssetUsage } from "@/db/queries/assetUsages"
 import { generateVariants } from "@/lib/images"
 import { extractThumbnail } from "@/lib/video"
@@ -19,24 +20,53 @@ export interface AssetMetadataInput {
   tags?: string[]
 }
 
-export interface UploadAssetsInput {
+export interface UploadAssetInput {
   uploadedBy: string
   files: File[]
-  metadata: AssetMetadataInput[]
+  metadata: AssetMetadataInput
 }
 
-/** Sube uno o varios archivos: Blob + variantes por red + fila en `assets`, uno por archivo. */
-export async function uploadAssets({ uploadedBy, files, metadata }: UploadAssetsInput): Promise<Asset[]> {
-  const created: Asset[] = []
-  for (let i = 0; i < files.length; i++) {
-    created.push(await uploadSingleAsset(files[i], metadata[i], uploadedBy))
+export type AssetWithImages = Asset & { images: AssetImage[] }
+
+/**
+ * Sube una ficha con una o varias imágenes: todos los archivos comparten la
+ * misma metadata (marca, fotógrafos, descripción...) y se guardan como una
+ * sola fila de Asset con N AssetImage — no una fila de Asset por archivo.
+ */
+export async function uploadAsset({ uploadedBy, files, metadata }: UploadAssetInput): Promise<AssetWithImages> {
+  if (files.length === 0) throw new Error("Selecciona al menos un archivo.")
+
+  const kinds = files.map((file) => (file.type.startsWith("video/") ? ("VIDEO" as const) : ("IMAGE" as const)))
+  if (new Set(kinds).size > 1) {
+    throw new Error("Todos los archivos de una ficha deben ser del mismo tipo (todas imágenes o todos vídeos).")
   }
-  return created
+
+  const asset = await createAsset({
+    brandId: metadata.brandId,
+    photographerIds: metadata.photographerIds ?? [],
+    objectType: metadata.objectType,
+    productUrl: metadata.productUrl,
+    inspirationUrl: metadata.inspirationUrl,
+    shortDescription: metadata.shortDescription,
+    tags: metadata.tags ?? [],
+    uploadedBy,
+  })
+
+  const images: AssetImage[] = []
+  for (let i = 0; i < files.length; i++) {
+    images.push(await uploadSingleImage(asset.id, files[i], kinds[i], i))
+  }
+
+  return { ...asset, images }
 }
 
-async function uploadSingleAsset(file: File, meta: AssetMetadataInput, uploadedBy: string): Promise<Asset> {
+async function uploadSingleImage(
+  assetId: string,
+  file: File,
+  kind: "IMAGE" | "VIDEO",
+  position: number
+): Promise<AssetImage> {
   const buffer = Buffer.from(await file.arrayBuffer())
-  const kind: NewAsset["kind"] = file.type.startsWith("video/") ? "VIDEO" : "IMAGE"
 
   const original = await uploadToBlob(`assets/original/${randomUUID()}-${file.name}`, buffer, {
     contentType: file.type || undefined,
@@ -44,19 +74,13 @@ async function uploadSingleAsset(file: File, meta: AssetMetadataInput, uploadedB
 
   const variants = kind === "IMAGE" ? await generateImageVariants(buffer) : await generateVideoVariants(buffer)
 
-  return createAsset({
+  return createAssetImage({
+    assetId,
     kind,
     originalBlobUrl: original.url,
     variants,
-    brandId: meta.brandId,
-    photographerIds: meta.photographerIds ?? [],
-    objectType: meta.objectType,
-    productUrl: meta.productUrl,
-    inspirationUrl: meta.inspirationUrl,
-    shortDescription: meta.shortDescription,
-    tags: meta.tags ?? [],
     sourceFilename: file.name,
-    uploadedBy,
+    position,
   })
 }
 
@@ -101,10 +125,10 @@ export interface ListAssetsFilters {
   pageSize?: number
 }
 
-export type AssetWithUsages = Asset & { usages: AssetUsage[] }
+export type AssetWithDetails = Asset & { usages: AssetUsage[]; images: AssetImage[] }
 
 export interface ListAssetsResult {
-  data: AssetWithUsages[]
+  data: AssetWithDetails[]
   page: number
   pageSize: number
   total: number
@@ -124,8 +148,12 @@ export async function listAssetsWithFilters(filters: ListAssetsFilters = {}): Pr
   if (filters.photographerId) {
     conditions.push(sql`${filters.photographerId} = ANY(${assets.photographerIds})`)
   }
-  if (filters.kind) conditions.push(eq(assets.kind, filters.kind))
   if (filters.tag) conditions.push(sql`${filters.tag} = ANY(${assets.tags})`)
+  if (filters.kind) {
+    conditions.push(
+      sql`EXISTS (SELECT 1 FROM ${assetImages} WHERE ${assetImages.assetId} = ${assets.id} AND ${assetImages.kind} = ${filters.kind})`
+    )
+  }
 
   if (filters.neverUsed) {
     conditions.push(
@@ -152,7 +180,10 @@ export async function listAssetsWithFilters(filters: ListAssetsFilters = {}): Pr
   ])
 
   const ids = rows.map((row) => row.id)
-  const usages = ids.length ? await db.select().from(assetUsages).where(inArray(assetUsages.assetId, ids)) : []
+  const [usages, images] = await Promise.all([
+    ids.length ? db.select().from(assetUsages).where(inArray(assetUsages.assetId, ids)) : Promise.resolve([]),
+    listImagesForAssets(ids),
+  ])
 
   const usagesByAsset = new Map<string, AssetUsage[]>()
   for (const usage of usages) {
@@ -161,18 +192,32 @@ export async function listAssetsWithFilters(filters: ListAssetsFilters = {}): Pr
     usagesByAsset.set(usage.assetId, list)
   }
 
+  const imagesByAsset = new Map<string, AssetImage[]>()
+  for (const image of images) {
+    const list = imagesByAsset.get(image.assetId) ?? []
+    list.push(image)
+    imagesByAsset.set(image.assetId, list)
+  }
+
   return {
-    data: rows.map((row) => ({ ...row, usages: usagesByAsset.get(row.id) ?? [] })),
+    data: rows.map((row) => ({
+      ...row,
+      usages: usagesByAsset.get(row.id) ?? [],
+      images: imagesByAsset.get(row.id) ?? [],
+    })),
     page,
     pageSize,
     total: countRows[0]?.count ?? 0,
   }
 }
 
-export async function getAssetWithUsages(id: string): Promise<AssetWithUsages | undefined> {
+export async function getAssetWithUsages(id: string): Promise<AssetWithDetails | undefined> {
   const db = getDb()
   const [asset] = await db.select().from(assets).where(eq(assets.id, id))
   if (!asset) return undefined
-  const usages = await db.select().from(assetUsages).where(eq(assetUsages.assetId, id))
-  return { ...asset, usages }
+  const [usages, images] = await Promise.all([
+    db.select().from(assetUsages).where(eq(assetUsages.assetId, id)),
+    listImagesForAssets([id]),
+  ])
+  return { ...asset, usages, images }
 }

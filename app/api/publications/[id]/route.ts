@@ -4,7 +4,8 @@ import { deletePublication, updatePublication } from "@/lib/publications"
 
 const updatePublicationSchema = z.object({
   text: z.string().optional(),
-  assetIds: z.array(z.uuid()).min(1).optional(),
+  assetId: z.uuid().optional(),
+  imageIds: z.array(z.uuid()).optional(),
   publicationDate: z
     .iso.datetime({ offset: true })
     .or(z.iso.datetime())
@@ -23,7 +24,8 @@ export async function PATCH(request: NextRequest, ctx: RouteContext<"/api/public
   try {
     const publication = await updatePublication(id, {
       text: parsed.data.text,
-      assetIds: parsed.data.assetIds,
+      assetId: parsed.data.assetId,
+      imageIds: parsed.data.imageIds,
       publicationDate: parsed.data.publicationDate ? new Date(parsed.data.publicationDate) : undefined,
       timezone: parsed.data.timezone,
     })

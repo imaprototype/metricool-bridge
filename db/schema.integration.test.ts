@@ -5,6 +5,7 @@ import { assets } from "./schema"
 import { createBrand, deleteBrand } from "./queries/brands"
 import { createPhotographer, deletePhotographer } from "./queries/photographers"
 import { createAsset, getAssetById } from "./queries/assets"
+import { createAssetImage } from "./queries/assetImages"
 import { createPublication, deletePublication, getPublicationById } from "./queries/publications"
 import { createPublicationTarget, listTargetsForPublication } from "./queries/publicationTargets"
 import { listUsagesForAsset, recordAssetUsage } from "./queries/assetUsages"
@@ -36,9 +37,6 @@ describe.skipIf(!process.env.RUN_DB_INTEGRATION_TESTS)("schema (integración con
 
     try {
       asset = await createAsset({
-        kind: "IMAGE",
-        originalBlobUrl: "https://blob.vercel-storage.com/test-original.jpg",
-        variants: { feed: "https://blob.vercel-storage.com/test-feed.jpg" },
         brandId: brand.id,
         photographerIds: [photographer.id],
         objectType: "lámpara de mesa",
@@ -46,13 +44,21 @@ describe.skipIf(!process.env.RUN_DB_INTEGRATION_TESTS)("schema (integración con
         inspirationUrl: "https://instagram.com/p/inspiracion123",
         shortDescription: "Lámpara de mesa en cerámica, luz cálida.",
         tags: ["cerámica", "luz-calida"],
-        sourceFilename: "IMG_0001.jpg",
         uploadedBy: "jm@norudsgn.com",
+      })
+
+      const image = await createAssetImage({
+        assetId: asset.id,
+        kind: "IMAGE",
+        originalBlobUrl: "https://blob.vercel-storage.com/test-original.jpg",
+        variants: { FEED_POST: "https://blob.vercel-storage.com/test-feed.jpg" },
+        sourceFilename: "IMG_0001.jpg",
+        position: 0,
       })
 
       expect(asset.inspirationUrl).toBe("https://instagram.com/p/inspiracion123")
       expect(asset.tags).toEqual(["cerámica", "luz-calida"])
-      expect(asset.variants).toEqual({ feed: "https://blob.vercel-storage.com/test-feed.jpg" })
+      expect(image.variants).toEqual({ FEED_POST: "https://blob.vercel-storage.com/test-feed.jpg" })
 
       const fetchedAsset = await getAssetById(asset.id)
       expect(fetchedAsset?.id).toBe(asset.id)
@@ -61,7 +67,8 @@ describe.skipIf(!process.env.RUN_DB_INTEGRATION_TESTS)("schema (integración con
         format: "FEED_POST",
         publicationDate: new Date("2026-09-10T10:00:00Z"),
         text: "Post de prueba",
-        assetIds: [asset.id],
+        assetId: asset.id,
+        imageIds: [image.id],
       })
 
       try {

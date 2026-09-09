@@ -16,7 +16,7 @@ import {
 } from "@/components/ui/sheet"
 import { Textarea } from "@/components/ui/textarea"
 import type { Photographer } from "@/db/queries/photographers"
-import type { AssetWithUsages } from "@/lib/assets"
+import type { AssetWithDetails } from "@/lib/assets"
 import { CheckboxList } from "./checkbox-list"
 
 const initialState: UpdateAssetActionState = {}
@@ -25,7 +25,7 @@ export function EditAssetSheet({
   asset,
   photographers,
 }: {
-  asset: AssetWithUsages
+  asset: AssetWithDetails
   photographers: Photographer[]
 }) {
   const [open, setOpen] = useState(false)
@@ -49,9 +49,29 @@ export function EditAssetSheet({
       <SheetContent>
         <SheetHeader>
           <SheetTitle>Editar asset</SheetTitle>
-          <SheetDescription>{asset.sourceFilename}</SheetDescription>
+          <SheetDescription>
+            {asset.images.length} imagen{asset.images.length === 1 ? "" : "es"} — el conjunto de imágenes no se
+            edita aquí todavía.
+          </SheetDescription>
         </SheetHeader>
         <form action={formAction} className="flex flex-col gap-4 overflow-y-auto px-4">
+          {asset.images.length > 0 ? (
+            <div className="flex gap-2 overflow-x-auto">
+              {asset.images.map((image) => {
+                const variants = image.variants as Record<string, string>
+                const thumb = variants.thumbnail ?? variants.FEED_POST ?? Object.values(variants)[0]
+                return thumb ? (
+                  // eslint-disable-next-line @next/next/no-img-element -- URLs de Vercel Blob, no requieren optimización de next/image aquí.
+                  <img
+                    key={image.id}
+                    src={thumb}
+                    alt=""
+                    className="size-16 shrink-0 rounded-md object-cover ring-1 ring-border"
+                  />
+                ) : null
+              })}
+            </div>
+          ) : null}
           <Field label="Tipo de objeto" name="objectType" defaultValue={asset.objectType} required />
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="shortDescription">Descripción breve</Label>

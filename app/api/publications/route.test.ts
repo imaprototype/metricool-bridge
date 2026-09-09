@@ -36,7 +36,7 @@ describe("GET /api/publications", () => {
 describe("POST /api/publications", () => {
   const validBody = {
     format: "FEED_POST",
-    assetIds: [VALID_ASSET_ID],
+    assetId: VALID_ASSET_ID,
     text: "hola",
     publicationDate: "2026-09-10T10:00:00.000Z",
     targets: [{ network: "instagram" }],
@@ -55,7 +55,7 @@ describe("POST /api/publications", () => {
     expect(res.status).toBe(201)
     expect(body.data.id).toBe("pub-1")
     expect(createPublication).toHaveBeenCalledWith(
-      expect.objectContaining({ format: "FEED_POST", assetIds: [VALID_ASSET_ID] })
+      expect.objectContaining({ format: "FEED_POST", assetId: VALID_ASSET_ID })
     )
   })
 

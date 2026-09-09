@@ -12,7 +12,7 @@ import {
   type PublicationTarget,
 } from "@/db/queries/publicationTargets"
 import { recordAssetUsage } from "@/db/queries/assetUsages"
-import { getAssetById } from "@/db/queries/assets"
+import { listImagesForAsset, type AssetImage } from "@/db/queries/assetImages"
 import { getDb } from "@/lib/db"
 import { publicationTargets, publications } from "@/db/schema"
 import { and, gte, inArray, lte, sql } from "drizzle-orm"
@@ -32,7 +32,13 @@ export const DEFAULT_TIMEZONE = "Europe/Madrid"
 
 export interface CreatePublicationInput {
   format: PublicationFormat
-  assetIds: string[]
+  /** Una publicación referencia UNA ficha — un CAROUSEL usa varias imágenes de esa misma ficha. */
+  assetId: string
+  /**
+   * Qué imágenes de la ficha usar, en orden. Si se omite: la portada
+   * (primera imagen) para formatos de una sola imagen, o todas para CAROUSEL.
+   */
+  imageIds?: string[]
   text: string
   publicationDate: Date
   /** Zona IANA con la que se interpreta publicationDate al hablar con Metricool. */
@@ -53,23 +59,56 @@ export function networkClientFor(network: string) {
   throw new Error(`No hay cliente de API implementado todavía para la red "${network}".`)
 }
 
-/** URLs de Vercel Blob de la variante correcta por asset — todavía no aptas para Metricool, ver `normalizeMediaForNetwork`. */
-async function resolveMediaUrls(assetIds: string[], format: PublicationFormat): Promise<string[]> {
-  const urls: string[] = []
-  for (const assetId of assetIds) {
-    const asset = await getAssetById(assetId)
-    if (!asset) throw new Error(`Asset ${assetId} no encontrado.`)
+/**
+ * Resuelve qué imágenes concretas de una ficha se usan para un formato dado.
+ * Sin `imageIds` explícitos: portada (primera) para formatos de una imagen,
+ * todas en orden para CAROUSEL. Con `imageIds`: se validan contra las
+ * imágenes reales de la ficha y deben encajar con el formato (1 imagen
+ * exacta salvo CAROUSEL).
+ */
+async function resolveImagesForPublication(
+  assetId: string,
+  format: PublicationFormat,
+  imageIds?: string[]
+): Promise<AssetImage[]> {
+  const allImages = await listImagesForAsset(assetId)
+  if (allImages.length === 0) {
+    throw new Error(`El asset ${assetId} no tiene imágenes.`)
+  }
 
-    const variants = asset.variants as Record<string, string>
-    const variantUrl = variants[format]
-    if (!variantUrl) {
+  let selected: AssetImage[]
+  if (imageIds && imageIds.length > 0) {
+    const byId = new Map(allImages.map((image) => [image.id, image]))
+    selected = imageIds.map((id) => {
+      const image = byId.get(id)
+      if (!image) throw new Error(`La imagen ${id} no pertenece al asset ${assetId}.`)
+      return image
+    })
+  } else if (format === "CAROUSEL") {
+    selected = allImages
+  } else {
+    selected = [allImages[0]]
+  }
+
+  if (format !== "CAROUSEL" && selected.length > 1) {
+    throw new Error(`El formato ${format} admite una sola imagen; se han indicado ${selected.length}.`)
+  }
+
+  return selected
+}
+
+/** URLs de Vercel Blob de las imágenes ya resueltas — todavía no aptas para Metricool, ver `normalizeMediaForNetwork`. */
+function resolveMediaUrls(images: AssetImage[], format: PublicationFormat): string[] {
+  return images.map((image) => {
+    const variants = image.variants as Record<string, string>
+    const url = variants[format]
+    if (!url) {
       throw new Error(
-        `El asset ${assetId} no tiene una variante generada para el formato ${format}. Sube el archivo de nuevo o rellena la variante que falta.`
+        `La imagen ${image.id} no tiene una variante generada para el formato ${format}. Sube el archivo de nuevo o rellena la variante que falta.`
       )
     }
-    urls.push(variantUrl)
-  }
-  return urls
+    return url
+  })
 }
 
 /**
@@ -122,18 +161,20 @@ function buildMetricoolPayload(params: {
 }
 
 export async function createPublication(input: CreatePublicationInput): Promise<PublicationWithTargets> {
-  if (input.assetIds.length === 0) throw new Error("Una publicación necesita al menos un asset.")
   if (input.targets.length === 0) throw new Error("Una publicación necesita al menos un target.")
 
   const timezone = input.timezone ?? DEFAULT_TIMEZONE
-  const media = await resolveMediaUrls(input.assetIds, input.format)
+  const images = await resolveImagesForPublication(input.assetId, input.format, input.imageIds)
+  const resolvedImageIds = images.map((image) => image.id)
+  const media = resolveMediaUrls(images, input.format)
 
   const publication = await createPublicationRow({
     format: input.format,
+    assetId: input.assetId,
+    imageIds: resolvedImageIds,
     publicationDate: input.publicationDate,
     timezone,
     text: input.text,
-    assetIds: input.assetIds,
   })
 
   // createPublication no es transaccional con la API de Metricool: si un
@@ -167,9 +208,7 @@ export async function createPublication(input: CreatePublicationInput): Promise<
       })
       targets.push(target)
 
-      for (const assetId of input.assetIds) {
-        await recordAssetUsage({ assetId, publicationId: publication.id, network: targetInput.network })
-      }
+      await recordAssetUsage({ assetId: input.assetId, publicationId: publication.id, network: targetInput.network })
     }
   } catch (err) {
     await updatePublicationRow(publication.id, { status: "ERROR" })
@@ -186,7 +225,8 @@ export async function createPublication(input: CreatePublicationInput): Promise<
 
 export interface UpdatePublicationInput {
   text?: string
-  assetIds?: string[]
+  assetId?: string
+  imageIds?: string[]
   publicationDate?: Date
   timezone?: string
 }
@@ -201,11 +241,19 @@ export async function updatePublication(
   const text = input.text ?? existing.text
   const publicationDate = input.publicationDate ?? existing.publicationDate
   const timezone = input.timezone ?? existing.timezone
-  const assetIds = input.assetIds ?? existing.assetIds
+  const assetId = input.assetId ?? existing.assetId
 
-  const media = await resolveMediaUrls(assetIds, existing.format)
+  const images = await resolveImagesForPublication(assetId, existing.format, input.imageIds ?? existing.imageIds)
+  const resolvedImageIds = images.map((image) => image.id)
+  const media = resolveMediaUrls(images, existing.format)
 
-  const updated = await updatePublicationRow(id, { text, publicationDate, timezone, assetIds })
+  const updated = await updatePublicationRow(id, {
+    text,
+    publicationDate,
+    timezone,
+    assetId,
+    imageIds: resolvedImageIds,
+  })
   if (!updated) return undefined
 
   const existingTargets = await listTargetsForPublication(id)
@@ -258,10 +306,11 @@ export async function deletePublication(id: string): Promise<boolean> {
 export interface CreateStoryInput {
   publicationDate: Date
   text?: string
-  assetIds?: string[]
+  /** Si se omite, la Story usa la portada de la ficha de la publicación origen. */
+  imageIds?: string[]
 }
 
-/** Crea una Story asociada a una publicación existente, reutilizando sus assets y zona horaria por defecto. */
+/** Crea una Story asociada a una publicación existente, reutilizando su ficha y zona horaria por defecto. */
 export async function createStoryForPublication(
   sourcePublicationId: string,
   input: CreateStoryInput
@@ -271,7 +320,8 @@ export async function createStoryForPublication(
 
   return createPublication({
     format: "STORY",
-    assetIds: input.assetIds ?? source.assetIds,
+    assetId: source.assetId,
+    imageIds: input.imageIds,
     text: input.text ?? source.text,
     publicationDate: input.publicationDate,
     timezone: source.timezone,

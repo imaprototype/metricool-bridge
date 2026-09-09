@@ -1,12 +1,12 @@
 "use client"
 
 import { useActionState, useRef, useState } from "react"
-import { useFieldArray, useForm } from "react-hook-form"
+import { useForm } from "react-hook-form"
 import {
   createBrandAction,
   createPhotographerAction,
-  uploadAssetsAction,
-  type UploadAssetsActionState,
+  uploadAssetAction,
+  type UploadAssetActionState,
 } from "@/app/assets/actions"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -17,11 +17,7 @@ import type { Photographer } from "@/db/queries/photographers"
 import { CheckboxList } from "../../_components/checkbox-list"
 import { CreateEntityDialog } from "./create-entity-dialog"
 
-interface SharedFields {
-  tags: string
-}
-
-interface FileFields {
+interface FormValues {
   objectType: string
   productUrl: string
   inspirationUrl: string
@@ -29,21 +25,14 @@ interface FileFields {
   tags: string
 }
 
-interface FormValues {
-  shared: SharedFields
-  files: FileFields[]
+function parseTags(value: string): string[] {
+  return value
+    .split(",")
+    .map((t) => t.trim())
+    .filter(Boolean)
 }
 
-function mergeTags(shared: string, own: string): string[] {
-  const parse = (value: string) =>
-    value
-      .split(",")
-      .map((t) => t.trim())
-      .filter(Boolean)
-  return Array.from(new Set([...parse(shared), ...parse(own)]))
-}
-
-const initialState: UploadAssetsActionState = {}
+const initialState: UploadAssetActionState = {}
 
 export function UploadForm({
   brands: initialBrands,
@@ -60,18 +49,13 @@ export function UploadForm({
   const [dragOver, setDragOver] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  const { register, control, getValues, reset } = useForm<FormValues>({
-    defaultValues: {
-      shared: { tags: "" },
-      files: [],
-    },
+  const { register, getValues, reset } = useForm<FormValues>({
+    defaultValues: { objectType: "", productUrl: "", inspirationUrl: "", shortDescription: "", tags: "" },
   })
 
-  const { fields, append, remove } = useFieldArray({ control, name: "files" })
-
   const [state, formAction, pending] = useActionState(async (
-    prev: UploadAssetsActionState
-  ): Promise<UploadAssetsActionState> => {
+    prev: UploadAssetActionState
+  ): Promise<UploadAssetActionState> => {
     if (selectedFiles.length === 0) {
       return { error: "Selecciona al menos un archivo." }
     }
@@ -85,20 +69,18 @@ export function UploadForm({
     for (const file of selectedFiles) fd.append("files", file)
     fd.append(
       "metadata",
-      JSON.stringify(
-        values.files.map((f) => ({
-          brandId,
-          photographerIds,
-          objectType: f.objectType,
-          productUrl: f.productUrl || undefined,
-          inspirationUrl: f.inspirationUrl || undefined,
-          shortDescription: f.shortDescription,
-          tags: mergeTags(values.shared.tags, f.tags),
-        }))
-      )
+      JSON.stringify({
+        brandId,
+        photographerIds,
+        objectType: values.objectType,
+        productUrl: values.productUrl || undefined,
+        inspirationUrl: values.inspirationUrl || undefined,
+        shortDescription: values.shortDescription,
+        tags: parseTags(values.tags),
+      })
     )
 
-    const result = await uploadAssetsAction(prev, fd)
+    const result = await uploadAssetAction(prev, fd)
     if (!result.error) {
       setSelectedFiles([])
       setBrandIds([])
@@ -110,31 +92,19 @@ export function UploadForm({
   }, initialState)
 
   function addFiles(list: FileList | File[]) {
-    const files = Array.from(list)
-    setSelectedFiles((prev) => [...prev, ...files])
-    for (const file of files) {
-      append({
-        objectType: "",
-        productUrl: "",
-        inspirationUrl: "",
-        shortDescription: "",
-        tags: "",
-      })
-      void file // el File en sí vive en selectedFiles, no en el form
-    }
+    setSelectedFiles((prev) => [...prev, ...Array.from(list)])
   }
 
   function removeFile(index: number) {
     setSelectedFiles((prev) => prev.filter((_, i) => i !== index))
-    remove(index)
   }
 
   return (
     <form action={formAction} className="flex flex-col gap-6">
       <section className="flex flex-col gap-4 rounded-xl border p-4">
-        <h2 className="font-heading text-sm font-medium">Metadata compartida</h2>
+        <h2 className="font-heading text-sm font-medium">Metadata de la ficha</h2>
         <p className="text-xs text-muted-foreground">
-          Se aplica a todos los archivos de esta tanda.
+          Se aplica a todas las imágenes que subas en esta tanda — todas forman una sola ficha.
         </p>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div className="flex flex-col gap-1.5">
@@ -177,9 +147,29 @@ export function UploadForm({
             />
           </div>
 
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="objectType">Tipo de objeto</Label>
+            <Input id="objectType" {...register("objectType")} required />
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="tags">Tags (separados por coma)</Label>
+            <Input id="tags" {...register("tags")} />
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="productUrl">URL del producto</Label>
+            <Input id="productUrl" type="url" {...register("productUrl")} />
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="inspirationUrl">URL de inspiración</Label>
+            <Input id="inspirationUrl" type="url" {...register("inspirationUrl")} />
+          </div>
+
           <div className="col-span-1 flex flex-col gap-1.5 sm:col-span-2">
-            <Label htmlFor="shared-tags">Tags (separados por coma)</Label>
-            <Input id="shared-tags" {...register("shared.tags")} />
+            <Label htmlFor="shortDescription">Descripción breve</Label>
+            <Textarea id="shortDescription" {...register("shortDescription")} required />
           </div>
         </div>
       </section>
@@ -199,7 +189,7 @@ export function UploadForm({
           dragOver ? "border-ring bg-muted/50" : "border-input"
         }`}
       >
-        <p>Arrastra fotos o vídeos aquí, o</p>
+        <p>Arrastra las imágenes (o vídeos) de esta ficha aquí, o</p>
         <Button type="button" variant="outline" size="sm" onClick={() => fileInputRef.current?.click()}>
           Elegir archivos
         </Button>
@@ -215,65 +205,32 @@ export function UploadForm({
         />
       </section>
 
-      {fields.length > 0 ? (
-        <section className="flex flex-col gap-4">
-          <h2 className="font-heading text-sm font-medium">Archivos ({fields.length})</h2>
-          {fields.map((field, index) => (
-            <div key={field.id} className="flex flex-col gap-3 rounded-xl border p-4">
-              <div className="flex items-center justify-between">
-                <span className="text-sm font-medium">{selectedFiles[index]?.name}</span>
+      {selectedFiles.length > 0 ? (
+        <section className="flex flex-col gap-2">
+          <h2 className="font-heading text-sm font-medium">Archivos ({selectedFiles.length})</h2>
+          <ul className="flex flex-col gap-1 rounded-xl border p-2">
+            {selectedFiles.map((file, index) => (
+              <li key={`${file.name}-${index}`} className="flex items-center justify-between px-2 py-1 text-sm">
+                <span>
+                  {file.name}
+                  {index === 0 ? <span className="ml-2 text-xs text-muted-foreground">(portada)</span> : null}
+                </span>
                 <Button type="button" variant="ghost" size="sm" onClick={() => removeFile(index)}>
                   Quitar
                 </Button>
-              </div>
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                <div className="flex flex-col gap-1.5">
-                  <Label htmlFor={`files.${index}.objectType`}>Tipo de objeto</Label>
-                  <Input id={`files.${index}.objectType`} {...register(`files.${index}.objectType`)} required />
-                </div>
-                <div className="flex flex-col gap-1.5">
-                  <Label htmlFor={`files.${index}.productUrl`}>URL del producto</Label>
-                  <Input
-                    id={`files.${index}.productUrl`}
-                    type="url"
-                    {...register(`files.${index}.productUrl`)}
-                  />
-                </div>
-                <div className="flex flex-col gap-1.5">
-                  <Label htmlFor={`files.${index}.inspirationUrl`}>URL de inspiración</Label>
-                  <Input
-                    id={`files.${index}.inspirationUrl`}
-                    type="url"
-                    {...register(`files.${index}.inspirationUrl`)}
-                  />
-                </div>
-                <div className="flex flex-col gap-1.5">
-                  <Label htmlFor={`files.${index}.tags`}>Tags adicionales</Label>
-                  <Input id={`files.${index}.tags`} {...register(`files.${index}.tags`)} />
-                </div>
-                <div className="flex flex-col gap-1.5 sm:col-span-2">
-                  <Label htmlFor={`files.${index}.shortDescription`}>Descripción breve</Label>
-                  <Textarea
-                    id={`files.${index}.shortDescription`}
-                    {...register(`files.${index}.shortDescription`)}
-                    required
-                  />
-                </div>
-              </div>
-            </div>
-          ))}
+              </li>
+            ))}
+          </ul>
         </section>
       ) : null}
 
       {state.error ? <p className="text-sm text-destructive">{state.error}</p> : null}
-      {state.successCount ? (
-        <p className="text-sm text-emerald-600">
-          {state.successCount} asset{state.successCount === 1 ? "" : "s"} subido{state.successCount === 1 ? "" : "s"}.
-        </p>
-      ) : null}
+      {state.createdAssetId ? <p className="text-sm text-emerald-600">Ficha subida correctamente.</p> : null}
 
-      <Button type="submit" disabled={pending || fields.length === 0} className="self-start">
-        {pending ? "Subiendo…" : `Subir ${fields.length || ""} archivo${fields.length === 1 ? "" : "s"}`}
+      <Button type="submit" disabled={pending || selectedFiles.length === 0} className="self-start">
+        {pending
+          ? "Subiendo…"
+          : `Subir ficha (${selectedFiles.length || 0} archivo${selectedFiles.length === 1 ? "" : "s"})`}
       </Button>
     </form>
   )

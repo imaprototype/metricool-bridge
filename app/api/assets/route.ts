@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server"
 import { z } from "zod"
-import { listAssetsWithFilters, uploadAssets } from "@/lib/assets"
+import { listAssetsWithFilters, uploadAsset } from "@/lib/assets"
 
-const assetMetadataSchema = z.object({
+const uploadPayloadSchema = z.object({
+  uploadedBy: z.string().min(1),
   brandId: z.uuid(),
   photographerIds: z.array(z.uuid()).optional(),
   objectType: z.string().min(1),
@@ -10,11 +11,6 @@ const assetMetadataSchema = z.object({
   inspirationUrl: z.url().optional(),
   shortDescription: z.string().min(1),
   tags: z.array(z.string()).optional(),
-})
-
-const uploadPayloadSchema = z.object({
-  uploadedBy: z.string().min(1),
-  assets: z.array(assetMetadataSchema).min(1),
 })
 
 function parseIntParam(value: string | null): number | undefined {
@@ -48,6 +44,10 @@ export async function GET(request: Request) {
   return NextResponse.json(result)
 }
 
+/**
+ * Crea UNA ficha con una o varias imágenes — todos los `files` comparten la
+ * misma metadata de `payload`. Para varias fichas distintas, varias llamadas.
+ */
 export async function POST(request: Request) {
   const formData = await request.formData()
   const files = formData.getAll("files").filter((entry): entry is File => entry instanceof File)
@@ -72,20 +72,25 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: z.treeifyError(parsed.error) }, { status: 400 })
   }
 
-  if (parsed.data.assets.length !== files.length) {
-    return NextResponse.json(
-      {
-        error: `'payload.assets' tiene ${parsed.data.assets.length} entradas pero se subieron ${files.length} archivos; deben coincidir 1 a 1 y en el mismo orden.`,
+  try {
+    const created = await uploadAsset({
+      uploadedBy: parsed.data.uploadedBy,
+      files,
+      metadata: {
+        brandId: parsed.data.brandId,
+        photographerIds: parsed.data.photographerIds,
+        objectType: parsed.data.objectType,
+        productUrl: parsed.data.productUrl,
+        inspirationUrl: parsed.data.inspirationUrl,
+        shortDescription: parsed.data.shortDescription,
+        tags: parsed.data.tags,
       },
+    })
+    return NextResponse.json({ data: created }, { status: 201 })
+  } catch (err) {
+    return NextResponse.json(
+      { error: err instanceof Error ? err.message : "Error subiendo la ficha." },
       { status: 400 }
     )
   }
-
-  const created = await uploadAssets({
-    uploadedBy: parsed.data.uploadedBy,
-    files,
-    metadata: parsed.data.assets,
-  })
-
-  return NextResponse.json({ data: created }, { status: 201 })
 }

@@ -32,16 +32,14 @@ export const photographers = pgTable("photographers", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 })
 
+// Una "ficha" de producto/contenido — la metadata se comparte entre todas sus
+// imágenes (ver asset_images). Un archivo subido ya no es un Asset propio.
 export const assets = pgTable("assets", {
   id: uuid("id").primaryKey().defaultRandom(),
-  kind: assetKindEnum("kind").notNull(),
-  originalBlobUrl: text("original_blob_url").notNull(),
-  // { feed: url, story: url, square: url, ... } — variantes generadas al subir (ver lib/images.ts)
-  variants: jsonb("variants").notNull().default({}),
   brandId: uuid("brand_id")
     .notNull()
     .references(() => brands.id),
-  // 0 o varios fotógrafos — array sin FK real, igual que tags/assetIds en esta app.
+  // 0 o varios fotógrafos — array sin FK real, igual que tags en esta app.
   photographerIds: uuid("photographer_ids").array().notNull().default([]),
   objectType: text("object_type").notNull(),
   // Ficha del producto (tienda, web de la marca...) — CTA y contexto para la IA.
@@ -51,10 +49,25 @@ export const assets = pgTable("assets", {
   inspirationUrl: text("inspiration_url"),
   shortDescription: text("short_description").notNull(),
   tags: text("tags").array().notNull().default([]),
-  sourceFilename: text("source_filename").notNull(),
   uploadedBy: text("uploaded_by").notNull(),
   uploadedAt: timestamp("uploaded_at", { withTimezone: true }).notNull().defaultNow(),
   status: assetStatusEnum("status").notNull().default("ACTIVE"),
+})
+
+// Cada imagen/vídeo de una ficha — todas comparten el `kind` (se valida al
+// subir, ver lib/assets.ts). `position` 0 = portada/imagen por defecto.
+export const assetImages = pgTable("asset_images", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  assetId: uuid("asset_id")
+    .notNull()
+    .references(() => assets.id, { onDelete: "cascade" }),
+  kind: assetKindEnum("kind").notNull(),
+  originalBlobUrl: text("original_blob_url").notNull(),
+  // { FEED_POST: url, STORY: url, ... } — variantes generadas al subir (ver lib/images.ts)
+  variants: jsonb("variants").notNull().default({}),
+  sourceFilename: text("source_filename").notNull(),
+  position: integer("position").notNull().default(0),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 })
 
 export const publications = pgTable("publications", {
@@ -68,8 +81,15 @@ export const publications = pgTable("publications", {
   // constructor... DateTimeInfo"). Ver ARCHITECTURE.md §5.
   timezone: text("timezone").notNull().default("Europe/Madrid"),
   text: text("text").notNull(),
-  // Referencias a Asset, 1 o varias según el formato (orden = orden del carrusel).
-  assetIds: uuid("asset_ids").array().notNull().default([]),
+  // Una publicación referencia UNA ficha — un CAROUSEL usa varias imágenes de
+  // esa misma ficha, nunca de fichas distintas.
+  assetId: uuid("asset_id")
+    .notNull()
+    .references(() => assets.id),
+  // Qué imágenes concretas de esa ficha se usaron, resuelto y guardado al
+  // crear/editar (portada por defecto para formatos de 1 imagen, todas para
+  // CAROUSEL) — array sin FK real, igual que tags.
+  imageIds: uuid("image_ids").array().notNull().default([]),
   status: publicationStatusEnum("status").notNull().default("PENDING"),
   lastSyncedAt: timestamp("last_synced_at", { withTimezone: true }),
   lastDriftNote: text("last_drift_note"),
@@ -124,7 +144,12 @@ export const assetsRelations = relations(assets, ({ one, many }) => ({
   brand: one(brands, { fields: [assets.brandId], references: [brands.id] }),
   // photographerIds es un array sin FK real (igual que tags) — sin relation
   // de drizzle, se resuelve a mano cuando haga falta el nombre del fotógrafo.
+  images: many(assetImages),
   usages: many(assetUsages),
+}))
+
+export const assetImagesRelations = relations(assetImages, ({ one }) => ({
+  asset: one(assets, { fields: [assetImages.assetId], references: [assets.id] }),
 }))
 
 export const publicationsRelations = relations(publications, ({ many }) => ({

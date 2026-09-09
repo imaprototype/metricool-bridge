@@ -2,17 +2,17 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 vi.mock("@/lib/assets", () => ({
   listAssetsWithFilters: vi.fn(),
-  uploadAssets: vi.fn(),
+  uploadAsset: vi.fn(),
 }))
 
-import { listAssetsWithFilters, uploadAssets } from "@/lib/assets"
+import { listAssetsWithFilters, uploadAsset } from "@/lib/assets"
 import { GET, POST } from "./route"
 
 const VALID_BRAND_ID = "11111111-1111-4111-8111-111111111111"
 
 beforeEach(() => {
   vi.mocked(listAssetsWithFilters).mockReset()
-  vi.mocked(uploadAssets).mockReset()
+  vi.mocked(uploadAsset).mockReset()
 })
 
 afterEach(() => {
@@ -65,34 +65,39 @@ describe("POST /api/assets", () => {
         overrides.payload ??
           JSON.stringify({
             uploadedBy: "jm@norudsgn.com",
-            assets: [
-              {
-                brandId: VALID_BRAND_ID,
-                objectType: "lámpara de mesa",
-                photographerIds: [],
-                shortDescription: "Lámpara en cerámica.",
-              },
-            ],
+            brandId: VALID_BRAND_ID,
+            photographerIds: [],
+            objectType: "lámpara de mesa",
+            shortDescription: "Lámpara en cerámica.",
           })
       )
     }
     return formData
   }
 
-  it("sube un asset válido y devuelve 201", async () => {
-    vi.mocked(uploadAssets).mockResolvedValue([{ id: "a1" } as never])
+  it("sube una ficha (con 1 o varios archivos) y devuelve 201", async () => {
+    vi.mocked(uploadAsset).mockResolvedValue({ id: "a1", images: [{ id: "img1" }] } as never)
 
-    const req = new Request("http://localhost/api/assets", { method: "POST", body: buildFormData() })
+    const twoFiles = [
+      new File(["a"], "a.jpg", { type: "image/jpeg" }),
+      new File(["b"], "b.jpg", { type: "image/jpeg" }),
+    ]
+    const req = new Request("http://localhost/api/assets", {
+      method: "POST",
+      body: buildFormData({ files: twoFiles }),
+    })
     const res = await POST(req)
     const body = await res.json()
 
     expect(res.status).toBe(201)
-    expect(body.data).toEqual([{ id: "a1" }])
-    expect(uploadAssets).toHaveBeenCalledTimes(1)
-    const call = vi.mocked(uploadAssets).mock.calls[0][0]
+    expect(body.data).toEqual({ id: "a1", images: [{ id: "img1" }] })
+    expect(uploadAsset).toHaveBeenCalledTimes(1)
+    const call = vi.mocked(uploadAsset).mock.calls[0][0]
     expect(call.uploadedBy).toBe("jm@norudsgn.com")
-    expect(call.files).toHaveLength(1)
-    expect(call.metadata).toHaveLength(1)
+    expect(call.files).toHaveLength(2)
+    expect(call.metadata).toEqual(
+      expect.objectContaining({ brandId: VALID_BRAND_ID, objectType: "lámpara de mesa" })
+    )
   })
 
   it("rechaza si no hay archivos", async () => {
@@ -104,7 +109,7 @@ describe("POST /api/assets", () => {
     const res = await POST(req)
 
     expect(res.status).toBe(400)
-    expect(uploadAssets).not.toHaveBeenCalled()
+    expect(uploadAsset).not.toHaveBeenCalled()
   })
 
   it("rechaza si falta el campo payload", async () => {
@@ -116,7 +121,7 @@ describe("POST /api/assets", () => {
     const res = await POST(req)
 
     expect(res.status).toBe(400)
-    expect(uploadAssets).not.toHaveBeenCalled()
+    expect(uploadAsset).not.toHaveBeenCalled()
   })
 
   it("rechaza si payload no es JSON válido", async () => {
@@ -136,7 +141,8 @@ describe("POST /api/assets", () => {
       body: buildFormData({
         payload: JSON.stringify({
           uploadedBy: "jm@norudsgn.com",
-          assets: [{ objectType: "x", shortDescription: "z" }],
+          objectType: "x",
+          shortDescription: "z",
         }),
       }),
     })
@@ -144,22 +150,19 @@ describe("POST /api/assets", () => {
     const res = await POST(req)
 
     expect(res.status).toBe(400)
-    expect(uploadAssets).not.toHaveBeenCalled()
+    expect(uploadAsset).not.toHaveBeenCalled()
   })
 
-  it("rechaza si el número de archivos y de entradas de metadata no coincide", async () => {
-    const twoFiles = [
-      new File(["a"], "a.jpg", { type: "image/jpeg" }),
-      new File(["b"], "b.jpg", { type: "image/jpeg" }),
-    ]
-    const req = new Request("http://localhost/api/assets", {
-      method: "POST",
-      body: buildFormData({ files: twoFiles }), // payload por defecto trae solo 1 entrada
-    })
+  it("devuelve 400 (no 500) cuando la lógica de negocio lanza un error de dominio", async () => {
+    vi.mocked(uploadAsset).mockRejectedValue(
+      new Error("Todos los archivos de una ficha deben ser del mismo tipo.")
+    )
 
+    const req = new Request("http://localhost/api/assets", { method: "POST", body: buildFormData() })
     const res = await POST(req)
+    const body = await res.json()
 
     expect(res.status).toBe(400)
-    expect(uploadAssets).not.toHaveBeenCalled()
+    expect(body.error).toMatch(/mismo tipo/)
   })
 })

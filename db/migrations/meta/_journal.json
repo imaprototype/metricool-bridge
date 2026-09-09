@@ -29,6 +29,20 @@
       "when": 1788727570420,
       "tag": "0003_drop_photographer_id_category_target_audience",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1788969311690,
+      "tag": "0004_add_asset_images",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1788969354463,
+      "tag": "0005_asset_images_drop_old_columns",
+      "breakpoints": true
     }
   ]
 }

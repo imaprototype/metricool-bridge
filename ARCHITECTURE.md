@@ -52,22 +52,29 @@ Photographer
   instagramHandle     string?
   createdAt           datetime
 
-Asset
+Asset                                    // una ficha de producto/contenido — no un archivo suelto
   id                  uuid
-  kind                "IMAGE" | "VIDEO"
-  originalBlobUrl     string            // archivo tal cual se subió
-  variants            json              // { feed: url, story: url, square: url, ... } generadas al subir
-  brandId             uuid              // FK a Brand — una sola marca por asset
-  photographerIds     uuid[]            // 0 o varios fotógrafos — sin FK real (array, igual que tags/assetIds en esta app)
+  brandId             uuid              // FK a Brand — una sola marca por ficha
+  photographerIds     uuid[]            // 0 o varios fotógrafos — sin FK real (array, igual que tags en esta app)
   objectType           string           // "lámpara de mesa", "silla"...
   productUrl           string?           // ficha del producto (tienda, web de la marca...) — para CTA y contexto de la IA
   inspirationUrl       string?           // post de referencia (Instagram u otra red) con buen engagement, para orientar el enfoque del copy/creatividad sin perder el tono de marca
-  shortDescription    text              // para que la IA redacte el copy — lo que hoy me cuentas tú a mano
+  shortDescription    text              // para que la IA redacte el copy — lo que hoy me cuentas tú a mano, compartida por todas sus imágenes
   tags                 string[]
-  sourceFilename       string            // trazabilidad del archivo original
+  images                AssetImage[]      // 1 o varias — todas comparten esta metadata; el conjunto queda fijo al crear la ficha
   uploadedBy            string
   uploadedAt            datetime
   status                "ACTIVE" | "ARCHIVED"
+
+AssetImage                              // cada imagen/vídeo de una ficha
+  id                  uuid
+  assetId             uuid              // FK a Asset
+  kind                "IMAGE" | "VIDEO"  // todas las de una misma ficha comparten kind — se valida al subir
+  originalBlobUrl     string            // archivo tal cual se subió
+  variants            json              // { FEED_POST: url, STORY: url, ... } generadas al subir
+  sourceFilename      string            // trazabilidad del archivo original
+  position            int               // 0 = portada/imagen por defecto al publicar
+  createdAt           datetime
 
 AssetUsage                              // se crea sola cuando un Asset entra en una Publication
   id             uuid
@@ -81,7 +88,8 @@ Publication                             // antes "Post" — ahora agnóstico de 
   format           "FEED_POST" | "CAROUSEL" | "STORY" | "REEL" | "VIDEO_POST"
   publicationDate  datetime + timezone   // timezone es IANA (p. ej. "Europe/Madrid"), obligatorio: Metricool exige { dateTime, timezone } en su payload, no un instante UTC a secas — ver §5
   text             string
-  assetIds         uuid[]                // referencias a Asset, 1 o varias según el formato
+  assetId          uuid                  // FK a Asset — UNA ficha por publicación
+  imageIds         uuid[]                // qué imágenes de esa ficha se usaron, resuelto al crear/editar: portada por defecto para formatos de 1 imagen, todas para CAROUSEL — un carrusel nunca combina imágenes de fichas distintas
   targets          PublicationTarget[]   // una entrada por red donde se publica
   status           "PENDING" | "PUBLISHED" | "ERROR"
   lastSyncedAt     datetime
@@ -108,21 +116,20 @@ Cambios clave respecto a la v1: `MediaAsset` pasa a ser `Asset`, con toda la met
 
 ## 4. Gestor de assets — diseño
 
-**El problema que resuelve:** hoy, para escribir el copy de un post, dependo de que me cuentes a mano en el chat de qué objeto se trata, quién es el fotógrafo, qué tono usar. Con el DAM, esa información se captura **una vez, al subir la foto**, y yo la consulto por API cuando toca redactar — así afino mejor el contenido y además queda un registro de qué material se ha usado y cuándo.
+**El problema que resuelve:** hoy, para escribir el copy de un post, dependo de que me cuentes a mano en el chat de qué objeto se trata, quién es el fotógrafo, qué tono usar. Con el DAM, esa información se captura **una vez, al subir la ficha**, y yo la consulto por API cuando toca redactar — así afino mejor el contenido y además queda un registro de qué material se ha usado y cuándo.
 
-**Subida (UI web, `/assets/upload`):**
-- Selector de archivos múltiple (fotos y/o vídeos, drag-and-drop).
-- Un bloque de **metadata compartida**, aplicable a toda la tanda subida a la vez: marca (checklist de selección única sobre `Brand`, con opción de crear una nueva), fotógrafo/s (checklist de selección múltiple sobre `Photographer`, con opción de crear uno nuevo), tags.
-- Por cada archivo de la tanda, campos que normalmente varían pieza a pieza: tipo de objeto, URL del producto (ficha en la tienda o web de la marca), URL de inspiración (post de referencia con buen engagement), descripción breve para la IA, tags adicionales — con la metadata compartida ya rellenada por defecto y editable individualmente.
-- Al confirmar: cada archivo sube a Vercel Blob, se generan las variantes por red (ver abajo) y se crea un `Asset` por archivo.
+**Subida (UI web, `/assets/upload`):** una ficha = un producto/pieza de contenido, con **una o varias imágenes** (ángulos distintos, por ejemplo) que comparten TODA la metadata — no una fila de `Asset` por archivo.
+- Un único bloque de metadata para toda la ficha: marca (checklist de selección única sobre `Brand`, con opción de crear una nueva), fotógrafo/s (checklist de selección múltiple sobre `Photographer`, con opción de crear uno nuevo), tipo de objeto, URL del producto, URL de inspiración, descripción breve para la IA, tags.
+- Selector de archivos múltiple (drag-and-drop) — todos del mismo tipo (fotos o vídeos, no mezclados en una misma ficha).
+- Al confirmar: cada archivo sube a Vercel Blob, se generan sus variantes por red (ver abajo), y se crea **una** fila de `Asset` con una fila de `AssetImage` por archivo (orden = orden de subida; la primera es la portada/imagen por defecto al publicar). El conjunto de imágenes queda fijo al crear la ficha.
 
-**Variantes generadas automáticamente al subir:**
-Un catálogo de ratios por red, hoy solo Instagram (feed 4:5 = 1080×1440, story 9:16 exacto = 1080×1920), ampliable según el catálogo de redes de §5 (p. ej. LinkedIn usa otro ratio de feed). Se generan las variantes conocidas en el momento de subir; si más adelante se activa una red nueva, un job puede rellenar variantes que falten para assets ya existentes sin volver a pedir el archivo original.
+**Variantes generadas automáticamente al subir (por cada `AssetImage`):**
+Un catálogo de ratios por red, hoy solo Instagram (feed 4:5 = 1080×1440, story 9:16 exacto = 1080×1920), ampliable según el catálogo de redes de §5 (p. ej. LinkedIn usa otro ratio de feed). Se generan las variantes conocidas en el momento de subir; si más adelante se activa una red nueva, un job puede rellenar variantes que falten para imágenes ya existentes sin volver a pedir el archivo original.
 
 **Consulta (lo que yo uso al redactar contenido):**
-`GET /api/assets` con filtros — por marca, tipo de objeto, fotógrafo, tag, rango de fechas de subida, y muy especialmente `unusedSince` / `neverUsed` para poder proponerte variedad en vez de repetir siempre el mismo material. La respuesta incluye toda la metadata (incluida `shortDescription`, `productUrl`, `inspirationUrl`, tono y público objetivo de la marca) y el historial de uso (`AssetUsage`), para que al escribir el copy tenga contexto real en vez de adivinarlo por el nombre del archivo — `productUrl` además sirve como referencia para el CTA o el enlace en bio cuando toque, e `inspirationUrl` como referencia de enfoque/tono de un post ajeno con buen engagement, adaptado siempre a la identidad de marca.
+`GET /api/assets` con filtros — por marca, tipo de objeto, fotógrafo, tag, rango de fechas de subida, y muy especialmente `unusedSince` / `neverUsed` para poder proponerte variedad en vez de repetir siempre el mismo material. La respuesta incluye toda la metadata de la ficha (incluida `shortDescription`, `productUrl`, `inspirationUrl`, tono y público objetivo de la marca), sus `images[]` y el historial de uso (`AssetUsage`), para que al escribir el copy tenga contexto real en vez de adivinarlo por el nombre del archivo — `productUrl` además sirve como referencia para el CTA o el enlace en bio cuando toque, e `inspirationUrl` como referencia de enfoque/tono de un post ajeno con buen engagement, adaptado siempre a la identidad de marca.
 
-**Registro de uso:** no hace falta que nadie lo marque a mano — se crea una fila en `AssetUsage` automáticamente cada vez que un `Asset` entra en el `assetIds` de una `Publication` nueva, una por cada red (`target`) donde se publique.
+**Registro de uso:** no hace falta que nadie lo marque a mano — se crea una fila en `AssetUsage` automáticamente cada vez que la ficha de un `Asset` entra en una `Publication` nueva, una por cada red (`target`) donde se publique.
 
 **UI de exploración (`/assets`):** un grid con miniaturas, los mismos filtros que el endpoint, y edición de metadata en sitio — el reemplazo directo de "explorar el directorio".
 
@@ -186,16 +193,16 @@ Todas bajo `x-api-key` propio.
 |---|---|---|
 | GET | `/api/health` | Comprueba token de Metricool válido y DB accesible |
 | **Assets** | | |
-| POST | `/api/assets` | Sube uno o varios archivos (`multipart/form-data`) + metadata compartida y por archivo; genera variantes y crea los `Asset` |
-| GET | `/api/assets?brand=&objectType=&photographer=&tag=&unusedSince=&kind=` | Lista assets con toda su metadata e historial de uso, paginado |
-| GET | `/api/assets/:id` | Detalle de un asset, incluida su `AssetUsage` |
-| PATCH | `/api/assets/:id` | Edita metadata |
+| POST | `/api/assets` | Sube **una ficha** con una o varias imágenes (`multipart/form-data`, metadata compartida por todas); genera variantes y crea el `Asset` + un `AssetImage` por archivo |
+| GET | `/api/assets?brand=&objectType=&photographer=&tag=&unusedSince=&kind=` | Lista assets con toda su metadata, `images[]` e historial de uso, paginado |
+| GET | `/api/assets/:id` | Detalle de un asset, incluidas sus `images[]` y su `AssetUsage` |
+| PATCH | `/api/assets/:id` | Edita metadata de la ficha (no sus imágenes) |
 | DELETE | `/api/assets/:id` | Archiva (no borra el blob salvo que se pida explícitamente) |
 | GET, POST | `/api/brands` | Catálogo de marcas |
 | GET, POST | `/api/photographers` | Catálogo de fotógrafos |
 | **Publicaciones** | | |
 | GET | `/api/publications?from=&to=&network=` | Lista publicaciones en rango, opcionalmente filtradas por red |
-| POST | `/api/publications` | Crea publicación (`format`, `assetIds`, `text`, `publicationDate`, `targets: [{network, collaborators?}]`) — registra `AssetUsage` automáticamente |
+| POST | `/api/publications` | Crea publicación (`format`, `assetId`, `imageIds?`, `text`, `publicationDate`, `targets: [{network, collaborators?}]`) — `imageIds` por defecto es la portada (1 imagen) o todas (CAROUSEL); registra `AssetUsage` automáticamente |
 | PATCH | `/api/publications/:id` | Edita texto/medios/fecha/targets; internamente hace el `PUT` a cada red afectada y actualiza sus `metricoolId` |
 | DELETE | `/api/publications/:id` | Borra en cada red y marca el registro interno |
 | POST | `/api/publications/:id/story` | Crea una Story asociada (Instagram, hoy) recortando automáticamente a 9:16 |

@@ -5,7 +5,8 @@ import { createStoryForPublication } from "@/lib/publications"
 const createStorySchema = z.object({
   publicationDate: z.iso.datetime({ offset: true }).or(z.iso.datetime()),
   text: z.string().optional(),
-  assetIds: z.array(z.uuid()).min(1).optional(),
+  // Si se omite, usa la portada de la ficha de la publicación origen.
+  imageIds: z.array(z.uuid()).optional(),
 })
 
 export async function POST(request: NextRequest, ctx: RouteContext<"/api/publications/[id]/story">) {
@@ -20,7 +21,7 @@ export async function POST(request: NextRequest, ctx: RouteContext<"/api/publica
     const story = await createStoryForPublication(id, {
       publicationDate: new Date(parsed.data.publicationDate),
       text: parsed.data.text,
-      assetIds: parsed.data.assetIds,
+      imageIds: parsed.data.imageIds,
     })
     return NextResponse.json({ data: story }, { status: 201 })
   } catch (err) {

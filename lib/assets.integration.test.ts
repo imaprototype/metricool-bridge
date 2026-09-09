@@ -14,7 +14,7 @@ import { assets } from "@/db/schema"
 import { createBrand, deleteBrand, type Brand } from "@/db/queries/brands"
 import { recordAssetUsage } from "@/db/queries/assetUsages"
 import { createPublication, deletePublication } from "@/db/queries/publications"
-import { listAssetsWithFilters, uploadAssets } from "./assets"
+import { uploadAsset, listAssetsWithFilters } from "./assets"
 
 async function makeTestImage(): Promise<File> {
   const buffer = await sharp({
@@ -41,72 +41,92 @@ describe.skipIf(!process.env.RUN_DB_INTEGRATION_TESTS)("lib/assets (integración
   afterEach(async () => {
     const db = getDb()
     for (const id of createdAssetIds.splice(0)) {
+      // ON DELETE CASCADE se lleva por delante asset_images.
       await db.delete(assets).where(eq(assets.id, id))
     }
     await deleteBrand(brand.id)
   })
 
-  it("uploadAssets genera variantes por cada formato del adaptador y persiste el asset", async () => {
-    const file = await makeTestImage()
+  it("uploadAsset genera variantes por cada formato del adaptador y persiste una ficha con sus imágenes", async () => {
+    const fileA = await makeTestImage()
+    const fileB = await makeTestImage()
 
-    const [created] = await uploadAssets({
+    const created = await uploadAsset({
       uploadedBy: "jm@norudsgn.com",
-      files: [file],
-      metadata: [
-        {
-          brandId: brand.id,
-          objectType: "lámpara de mesa",
-          photographerIds: ["11111111-1111-4111-8111-111111111111"],
-          inspirationUrl: "https://instagram.com/p/inspiracion123",
-          shortDescription: "Lámpara en cerámica.",
-          tags: ["ceramica"],
-        },
-      ],
+      files: [fileA, fileB],
+      metadata: {
+        brandId: brand.id,
+        objectType: "lámpara de mesa",
+        photographerIds: ["11111111-1111-4111-8111-111111111111"],
+        inspirationUrl: "https://instagram.com/p/inspiracion123",
+        shortDescription: "Lámpara en cerámica.",
+        tags: ["ceramica"],
+      },
     })
     createdAssetIds.push(created.id)
 
-    expect(created.kind).toBe("IMAGE")
     expect(created.inspirationUrl).toBe("https://instagram.com/p/inspiracion123")
     expect(created.photographerIds).toEqual(["11111111-1111-4111-8111-111111111111"])
-    expect(Object.keys(created.variants as object).sort()).toEqual(
-      ["CAROUSEL", "FEED_POST", "REEL", "STORY", "VIDEO_POST"].sort()
-    )
+    // Una ficha, dos imágenes — no dos fichas.
+    expect(created.images).toHaveLength(2)
+    expect(created.images[0].position).toBe(0)
+    expect(created.images[1].position).toBe(1)
+    for (const image of created.images) {
+      expect(image.kind).toBe("IMAGE")
+      expect(Object.keys(image.variants as object).sort()).toEqual(
+        ["CAROUSEL", "FEED_POST", "REEL", "STORY", "VIDEO_POST"].sort()
+      )
+    }
 
     const byPhotographer = await listAssetsWithFilters({
       brandId: brand.id,
       photographerId: "11111111-1111-4111-8111-111111111111",
     })
     expect(byPhotographer.data.map((a) => a.id)).toEqual([created.id])
+    expect(byPhotographer.data[0].images).toHaveLength(2)
+  })
+
+  it("uploadAsset rechaza mezclar imágenes y vídeo en la misma ficha", async () => {
+    const file = await makeTestImage()
+    const fakeVideo = new File(["not really a video"], "clip.mp4", { type: "video/mp4" })
+
+    await expect(
+      uploadAsset({
+        uploadedBy: "jm@norudsgn.com",
+        files: [file, fakeVideo],
+        metadata: {
+          brandId: brand.id,
+          objectType: "mixto",
+          shortDescription: "No debería crearse.",
+        },
+      })
+    ).rejects.toThrow(/mismo tipo/)
   })
 
   it("listAssetsWithFilters filtra por tag, brand y neverUsed, y pagina", async () => {
     const fileA = await makeTestImage()
     const fileB = await makeTestImage()
 
-    const [assetWithTag] = await uploadAssets({
+    const assetWithTag = await uploadAsset({
       uploadedBy: "jm@norudsgn.com",
       files: [fileA],
-      metadata: [
-        {
-          brandId: brand.id,
-          objectType: "silla",
-          shortDescription: "Silla de madera.",
-          tags: ["madera-test"],
-        },
-      ],
+      metadata: {
+        brandId: brand.id,
+        objectType: "silla",
+        shortDescription: "Silla de madera.",
+        tags: ["madera-test"],
+      },
     })
     createdAssetIds.push(assetWithTag.id)
 
-    const [assetWithoutTag] = await uploadAssets({
+    const assetWithoutTag = await uploadAsset({
       uploadedBy: "jm@norudsgn.com",
       files: [fileB],
-      metadata: [
-        {
-          brandId: brand.id,
-          objectType: "cojín",
-          shortDescription: "Cojín de lino.",
-        },
-      ],
+      metadata: {
+        brandId: brand.id,
+        objectType: "cojín",
+        shortDescription: "Cojín de lino.",
+      },
     })
     createdAssetIds.push(assetWithoutTag.id)
 
@@ -114,7 +134,8 @@ describe.skipIf(!process.env.RUN_DB_INTEGRATION_TESTS)("lib/assets (integración
       format: "FEED_POST",
       publicationDate: new Date("2026-09-10T10:00:00Z"),
       text: "Post de prueba",
-      assetIds: [assetWithTag.id],
+      assetId: assetWithTag.id,
+      imageIds: [assetWithTag.images[0].id],
     })
 
     try {

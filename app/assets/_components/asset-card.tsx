@@ -2,7 +2,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import type { Photographer } from "@/db/queries/photographers"
-import type { AssetWithUsages } from "@/lib/assets"
+import type { AssetWithDetails } from "@/lib/assets"
 import { archiveAssetAction } from "@/app/assets/actions"
 import { EditAssetSheet } from "./edit-asset-sheet"
 
@@ -11,12 +11,13 @@ export function AssetCard({
   brandName,
   photographers,
 }: {
-  asset: AssetWithUsages
+  asset: AssetWithDetails
   brandName: string
   photographers: Photographer[]
 }) {
-  const variants = asset.variants as Record<string, string>
-  const thumbnailUrl = variants.thumbnail ?? variants.FEED_POST ?? Object.values(variants)[0]
+  const cover = asset.images[0]
+  const coverVariants = (cover?.variants ?? {}) as Record<string, string>
+  const thumbnailUrl = coverVariants.thumbnail ?? coverVariants.FEED_POST ?? Object.values(coverVariants)[0]
   const photographerNames = photographers
     .filter((p) => asset.photographerIds.includes(p.id))
     .map((p) => p.name)
@@ -24,14 +25,21 @@ export function AssetCard({
 
   return (
     <Card size="sm" className="overflow-hidden">
-      {thumbnailUrl ? (
-        // eslint-disable-next-line @next/next/no-img-element -- URLs de Vercel Blob, no requieren optimización de next/image aquí.
-        <img src={thumbnailUrl} alt={asset.shortDescription} className="aspect-square w-full object-cover" />
-      ) : (
-        <div className="flex aspect-square w-full items-center justify-center bg-muted text-xs text-muted-foreground">
-          Sin variante
-        </div>
-      )}
+      <div className="relative">
+        {thumbnailUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element -- URLs de Vercel Blob, no requieren optimización de next/image aquí.
+          <img src={thumbnailUrl} alt={asset.shortDescription} className="aspect-square w-full object-cover" />
+        ) : (
+          <div className="flex aspect-square w-full items-center justify-center bg-muted text-xs text-muted-foreground">
+            Sin variante
+          </div>
+        )}
+        {asset.images.length > 1 ? (
+          <Badge className="absolute top-2 right-2 text-xs" variant="secondary">
+            {asset.images.length} imágenes
+          </Badge>
+        ) : null}
+      </div>
       <CardHeader>
         <CardTitle className="line-clamp-1">{asset.objectType}</CardTitle>
         <p className="text-xs text-muted-foreground">

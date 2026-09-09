@@ -5,7 +5,7 @@ import { z } from "zod"
 import { archiveAsset, updateAsset } from "@/db/queries/assets"
 import { createBrand, type Brand } from "@/db/queries/brands"
 import { createPhotographer, type Photographer } from "@/db/queries/photographers"
-import { uploadAssets, type AssetMetadataInput } from "@/lib/assets"
+import { uploadAsset, type AssetMetadataInput } from "@/lib/assets"
 import { auth } from "@/lib/auth"
 
 export async function archiveAssetAction(id: string): Promise<void> {
@@ -104,20 +104,21 @@ export async function createPhotographerAction(
   return { created }
 }
 
-export interface UploadAssetsActionState {
+export interface UploadAssetActionState {
   error?: string
-  successCount?: number
+  createdAssetId?: string
 }
 
 /**
- * Recibe FormData construido en el cliente: `files` (uno o más) y
- * `metadata` (JSON string, un objeto AssetMetadataInput por archivo, mismo
- * orden). `uploadedBy` se resuelve de la sesión, no del formulario.
+ * Recibe FormData construido en el cliente: `files` (uno o más, todos de la
+ * misma ficha) y `metadata` (JSON string, un único AssetMetadataInput
+ * compartido por todos). `uploadedBy` se resuelve de la sesión, no del
+ * formulario.
  */
-export async function uploadAssetsAction(
-  _prevState: UploadAssetsActionState,
+export async function uploadAssetAction(
+  _prevState: UploadAssetActionState,
   formData: FormData
-): Promise<UploadAssetsActionState> {
+): Promise<UploadAssetActionState> {
   const session = await auth()
   const uploadedBy = session?.user?.email
   if (!uploadedBy) {
@@ -131,25 +132,21 @@ export async function uploadAssetsAction(
     return { error: "Selecciona al menos un archivo." }
   }
   if (typeof metadataRaw !== "string") {
-    return { error: "Falta la metadata de los archivos." }
+    return { error: "Falta la metadata de la ficha." }
   }
 
-  let metadata: AssetMetadataInput[]
+  let metadata: AssetMetadataInput
   try {
     metadata = JSON.parse(metadataRaw)
   } catch {
     return { error: "La metadata no es JSON válido." }
   }
 
-  if (metadata.length !== files.length) {
-    return { error: "El número de archivos y de entradas de metadata no coincide." }
-  }
-
   try {
-    const created = await uploadAssets({ uploadedBy, files, metadata })
+    const created = await uploadAsset({ uploadedBy, files, metadata })
     revalidatePath("/assets")
-    return { successCount: created.length }
+    return { createdAssetId: created.id }
   } catch (err) {
-    return { error: err instanceof Error ? err.message : "Error subiendo los archivos." }
+    return { error: err instanceof Error ? err.message : "Error subiendo la ficha." }
   }
 }
