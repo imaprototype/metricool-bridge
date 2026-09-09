@@ -11,17 +11,28 @@ import { handleUpload, type HandleUploadBody } from "@vercel/blob/client"
 export async function POST(request: Request): Promise<Response> {
   const body = (await request.json()) as HandleUploadBody
 
-  const jsonResponse = await handleUpload({
-    body,
-    request,
-    // Mismo motivo que en lib/blob.ts: evita que el SDK prefiera auth OIDC.
-    token: process.env.BLOB_READ_WRITE_TOKEN,
-    onBeforeGenerateToken: async () => ({
-      allowedContentTypes: ["image/*", "video/*"],
-      addRandomSuffix: true,
-      maximumSizeInBytes: 500 * 1024 * 1024,
-    }),
-  })
-
-  return Response.json(jsonResponse)
+  try {
+    const jsonResponse = await handleUpload({
+      body,
+      request,
+      // Mismo motivo que en lib/blob.ts: evita que el SDK prefiera auth OIDC.
+      token: process.env.BLOB_READ_WRITE_TOKEN,
+      onBeforeGenerateToken: async () => ({
+        allowedContentTypes: ["image/*", "video/*"],
+        addRandomSuffix: true,
+        maximumSizeInBytes: 500 * 1024 * 1024,
+      }),
+    })
+    return Response.json(jsonResponse)
+  } catch (err) {
+    // Sin este catch, cualquier error aquí se convierte en una página de
+    // error HTML genérica — @vercel/blob/client intenta hacer res.json()
+    // sobre eso y el navegador solo ve "Failed to retrieve the client
+    // token", sin pista de la causa real.
+    console.error("[/assets/upload/token]", err)
+    return Response.json(
+      { error: err instanceof Error ? err.message : "Error generando el token de subida." },
+      { status: 400 }
+    )
+  }
 }
