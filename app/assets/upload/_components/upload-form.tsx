@@ -1,12 +1,12 @@
 "use client"
 
-import { useActionState, useRef, useState } from "react"
+import { upload } from "@vercel/blob/client"
+import { useRef, useState } from "react"
 import { useForm } from "react-hook-form"
 import {
   createBrandAction,
   createPhotographerAction,
-  uploadAssetAction,
-  type UploadAssetActionState,
+  finalizeAssetUploadAction,
 } from "@/app/assets/actions"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -32,8 +32,6 @@ function parseTags(value: string): string[] {
     .filter(Boolean)
 }
 
-const initialState: UploadAssetActionState = {}
-
 export function UploadForm({
   brands: initialBrands,
   photographers: initialPhotographers,
@@ -47,49 +45,79 @@ export function UploadForm({
   const [photographerIds, setPhotographerIds] = useState<string[]>([])
   const [selectedFiles, setSelectedFiles] = useState<File[]>([])
   const [dragOver, setDragOver] = useState(false)
+  const [pending, setPending] = useState(false)
+  const [error, setError] = useState<string | undefined>()
+  const [createdAssetId, setCreatedAssetId] = useState<string | undefined>()
+  const [progress, setProgress] = useState<{ done: number; total: number } | undefined>()
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const { register, getValues, reset } = useForm<FormValues>({
     defaultValues: { objectType: "", productUrl: "", inspirationUrl: "", shortDescription: "", tags: "" },
   })
 
-  const [state, formAction, pending] = useActionState(async (
-    prev: UploadAssetActionState
-  ): Promise<UploadAssetActionState> => {
+  async function handleSubmit() {
+    setError(undefined)
+    setCreatedAssetId(undefined)
+
     if (selectedFiles.length === 0) {
-      return { error: "Selecciona al menos un archivo." }
+      setError("Selecciona al menos un archivo.")
+      return
     }
     const brandId = brandIds[0]
     if (!brandId) {
-      return { error: "Elige una marca." }
+      setError("Elige una marca.")
+      return
     }
 
-    const values = getValues()
-    const fd = new FormData()
-    for (const file of selectedFiles) fd.append("files", file)
-    fd.append(
-      "metadata",
-      JSON.stringify({
-        brandId,
-        photographerIds,
-        objectType: values.objectType,
-        productUrl: values.productUrl || undefined,
-        inspirationUrl: values.inspirationUrl || undefined,
-        shortDescription: values.shortDescription,
-        tags: parseTags(values.tags),
+    setPending(true)
+    setProgress({ done: 0, total: selectedFiles.length })
+
+    try {
+      let done = 0
+      const uploaded = await Promise.all(
+        selectedFiles.map(async (file) => {
+          const blob = await upload(file.name, file, {
+            access: "public",
+            handleUploadUrl: "/assets/upload/token",
+            contentType: file.type || undefined,
+          })
+          done += 1
+          setProgress({ done, total: selectedFiles.length })
+          return { url: blob.url, sourceFilename: file.name, contentType: file.type || "application/octet-stream" }
+        })
+      )
+
+      const values = getValues()
+      const result = await finalizeAssetUploadAction({
+        files: uploaded,
+        metadata: {
+          brandId,
+          photographerIds,
+          objectType: values.objectType,
+          productUrl: values.productUrl || undefined,
+          inspirationUrl: values.inspirationUrl || undefined,
+          shortDescription: values.shortDescription,
+          tags: parseTags(values.tags),
+        },
       })
-    )
 
-    const result = await uploadAssetAction(prev, fd)
-    if (!result.error) {
-      setSelectedFiles([])
-      setBrandIds([])
-      setPhotographerIds([])
-      reset()
-      if (fileInputRef.current) fileInputRef.current.value = ""
+      if (result.error) {
+        setError(result.error)
+      } else {
+        setCreatedAssetId(result.createdAssetId)
+        setSelectedFiles([])
+        setBrandIds([])
+        setPhotographerIds([])
+        reset()
+        if (fileInputRef.current) fileInputRef.current.value = ""
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Error subiendo la ficha.")
+    } finally {
+      setPending(false)
+      setProgress(undefined)
     }
-    return result
-  }, initialState)
+  }
 
   function addFiles(list: FileList | File[]) {
     setSelectedFiles((prev) => [...prev, ...Array.from(list)])
@@ -100,7 +128,13 @@ export function UploadForm({
   }
 
   return (
-    <form action={formAction} className="flex flex-col gap-6">
+    <form
+      onSubmit={(e) => {
+        e.preventDefault()
+        void handleSubmit()
+      }}
+      className="flex flex-col gap-6"
+    >
       <section className="flex flex-col gap-4 rounded-xl border p-4">
         <h2 className="font-heading text-sm font-medium">Metadata de la ficha</h2>
         <p className="text-xs text-muted-foreground">
@@ -224,12 +258,14 @@ export function UploadForm({
         </section>
       ) : null}
 
-      {state.error ? <p className="text-sm text-destructive">{state.error}</p> : null}
-      {state.createdAssetId ? <p className="text-sm text-emerald-600">Ficha subida correctamente.</p> : null}
+      {error ? <p className="text-sm text-destructive">{error}</p> : null}
+      {createdAssetId ? <p className="text-sm text-emerald-600">Ficha subida correctamente.</p> : null}
 
       <Button type="submit" disabled={pending || selectedFiles.length === 0} className="self-start">
         {pending
-          ? "Subiendo…"
+          ? progress
+            ? `Subiendo ${progress.done}/${progress.total}…`
+            : "Subiendo…"
           : `Subir ficha (${selectedFiles.length || 0} archivo${selectedFiles.length === 1 ? "" : "s"})`}
       </Button>
     </form>

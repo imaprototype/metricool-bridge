@@ -211,6 +211,74 @@ export async function listAssetsWithFilters(filters: ListAssetsFilters = {}): Pr
   }
 }
 
+export interface UploadedOriginalFile {
+  url: string
+  sourceFilename: string
+  contentType: string
+}
+
+export interface FinalizeAssetInput {
+  uploadedBy: string
+  files: UploadedOriginalFile[]
+  metadata: AssetMetadataInput
+}
+
+/**
+ * Igual que uploadAsset(), pero para archivos que ya están en Blob (subidos
+ * directo desde el navegador con @vercel/blob/client, sin pasar por nuestra
+ * función — ver app/assets/upload/token/route.ts). Descarga cada original
+ * ya subido para generar sus variantes con sharp/ffmpeg, tal como hace
+ * uploadSingleImage con el Buffer que llega en la request.
+ */
+export async function finalizeAssetUpload({ uploadedBy, files, metadata }: FinalizeAssetInput): Promise<AssetWithImages> {
+  if (files.length === 0) throw new Error("Selecciona al menos un archivo.")
+
+  const kinds = files.map((file) => (file.contentType.startsWith("video/") ? ("VIDEO" as const) : ("IMAGE" as const)))
+  if (new Set(kinds).size > 1) {
+    throw new Error("Todos los archivos de una ficha deben ser del mismo tipo (todas imágenes o todos vídeos).")
+  }
+
+  const asset = await createAsset({
+    brandId: metadata.brandId,
+    photographerIds: metadata.photographerIds ?? [],
+    objectType: metadata.objectType,
+    productUrl: metadata.productUrl,
+    inspirationUrl: metadata.inspirationUrl,
+    shortDescription: metadata.shortDescription,
+    tags: metadata.tags ?? [],
+    uploadedBy,
+  })
+
+  const images: AssetImage[] = []
+  for (let i = 0; i < files.length; i++) {
+    images.push(await finalizeSingleImage(asset.id, files[i], kinds[i], i))
+  }
+
+  return { ...asset, images }
+}
+
+async function finalizeSingleImage(
+  assetId: string,
+  file: UploadedOriginalFile,
+  kind: "IMAGE" | "VIDEO",
+  position: number
+): Promise<AssetImage> {
+  const response = await fetch(file.url)
+  if (!response.ok) throw new Error(`No se pudo descargar el original ya subido: ${file.url}`)
+  const buffer = Buffer.from(await response.arrayBuffer())
+
+  const variants = kind === "IMAGE" ? await generateImageVariants(buffer) : await generateVideoVariants(buffer)
+
+  return createAssetImage({
+    assetId,
+    kind,
+    originalBlobUrl: file.url,
+    variants,
+    sourceFilename: file.sourceFilename,
+    position,
+  })
+}
+
 export async function getAssetWithUsages(id: string): Promise<AssetWithDetails | undefined> {
   const db = getDb()
   const [asset] = await db.select().from(assets).where(eq(assets.id, id))

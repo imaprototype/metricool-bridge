@@ -2,6 +2,8 @@
 
 **Última actualización:** 2026-09-09
 
+> ⚠️ **`POST /api/assets` tiene un límite de ~4.5MB por request** (tope duro de infraestructura de Vercel Functions, no configurable). Con varios archivos o vídeo es fácil superarlo. El formulario web `/assets/upload` ya no tiene este límite (sube directo a Blob desde el navegador), pero este endpoint externo, de momento, sí. Ver Changelog.
+
 **Base URL:** `https://metricool-bridge.vercel.app`
 
 **Auth:** header `x-api-key: <INTERNAL_API_KEY>` en todas las rutas `/api/*` excepto `/api/health`. Sin la clave o con una incorrecta → `401`.
@@ -114,6 +116,7 @@ Una publicación referencia **una sola ficha** (`assetId`). Para formatos de una
 
 ## Changelog
 
+- **2026-09-09** — El formulario web `/assets/upload` ahora sube los originales directo a Vercel Blob desde el navegador (sin pasar por una Function), así que ya no tiene límite de tamaño práctico. `POST /api/assets` **no ha cambiado** y sigue teniendo el tope duro de ~4.5MB por request de las Vercel Functions — pendiente de resolver para este endpoint.
 - **2026-09-09** — Cambio de modelo importante: **Asset pasa a ser una ficha con una o varias imágenes** (`images[]`), no un archivo suelto. `POST /api/assets` ahora crea una ficha por llamada (`payload` es un objeto único, ya no un array por archivo). `POST/PATCH /api/publications` y `POST /api/publications/:id/story` cambian `assetIds`→`assetId` (una sola ficha) + `imageIds?` opcional (portada por defecto, todas para CAROUSEL). Un CAROUSEL ya no puede combinar imágenes de fichas distintas.
 - **2026-09-06** — Assets: quitados `category` y `targetAudience` (ya no existen en el modelo). `photographerId` (uno) pasa a `photographerIds` (array, 0 o varios). `PATCH /api/assets/:id` ahora también acepta `brandId` y `photographerIds`.
 - **2026-09-03** — Primera versión: catálogos, assets, publicaciones, verify. Todo verificado contra Metricool/Instagram real (incluye el descubrimiento de que `publicationDate` va como `{ dateTime, timezone }`, no un string ISO plano, y que Metricool rota el `id` de un post en cada `PUT`).

@@ -5,7 +5,7 @@ import { z } from "zod"
 import { archiveAsset, updateAsset } from "@/db/queries/assets"
 import { createBrand, type Brand } from "@/db/queries/brands"
 import { createPhotographer, type Photographer } from "@/db/queries/photographers"
-import { uploadAsset, type AssetMetadataInput } from "@/lib/assets"
+import { finalizeAssetUpload, type AssetMetadataInput, type UploadedOriginalFile } from "@/lib/assets"
 import { auth } from "@/lib/auth"
 
 export async function archiveAssetAction(id: string): Promise<void> {
@@ -104,46 +104,37 @@ export async function createPhotographerAction(
   return { created }
 }
 
-export interface UploadAssetActionState {
+export interface FinalizeAssetUploadActionState {
   error?: string
   createdAssetId?: string
 }
 
+export interface FinalizeAssetUploadActionInput {
+  files: UploadedOriginalFile[]
+  metadata: AssetMetadataInput
+}
+
 /**
- * Recibe FormData construido en el cliente: `files` (uno o más, todos de la
- * misma ficha) y `metadata` (JSON string, un único AssetMetadataInput
- * compartido por todos). `uploadedBy` se resuelve de la sesión, no del
- * formulario.
+ * Los archivos ya están en Blob (subidos directo desde el navegador con
+ * @vercel/blob/client, ver app/assets/upload/token/route.ts) — aquí solo
+ * llega el JSON de metadata + URLs, muy por debajo de cualquier límite de
+ * body. `uploadedBy` se resuelve de la sesión, no del cliente.
  */
-export async function uploadAssetAction(
-  _prevState: UploadAssetActionState,
-  formData: FormData
-): Promise<UploadAssetActionState> {
+export async function finalizeAssetUploadAction(
+  input: FinalizeAssetUploadActionInput
+): Promise<FinalizeAssetUploadActionState> {
   const session = await auth()
   const uploadedBy = session?.user?.email
   if (!uploadedBy) {
     return { error: "Sesión no válida — vuelve a iniciar sesión." }
   }
 
-  const files = formData.getAll("files").filter((entry): entry is File => entry instanceof File)
-  const metadataRaw = formData.get("metadata")
-
-  if (files.length === 0) {
+  if (input.files.length === 0) {
     return { error: "Selecciona al menos un archivo." }
   }
-  if (typeof metadataRaw !== "string") {
-    return { error: "Falta la metadata de la ficha." }
-  }
-
-  let metadata: AssetMetadataInput
-  try {
-    metadata = JSON.parse(metadataRaw)
-  } catch {
-    return { error: "La metadata no es JSON válido." }
-  }
 
   try {
-    const created = await uploadAsset({ uploadedBy, files, metadata })
+    const created = await finalizeAssetUpload({ uploadedBy, files: input.files, metadata: input.metadata })
     revalidatePath("/assets")
     return { createdAssetId: created.id }
   } catch (err) {
