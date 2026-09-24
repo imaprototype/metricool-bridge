@@ -17,8 +17,8 @@ vi.mock("@/db/queries/assetUsages", () => ({
 vi.mock("@/db/queries/assetImages", () => ({
   listImagesForAsset: vi.fn(),
 }))
-vi.mock("@/lib/networks/instagram", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@/lib/networks/instagram")>()
+vi.mock("@/lib/networks/metricool-client", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/networks/metricool-client")>()
   return {
     ...actual,
     createPost: vi.fn(),
@@ -41,7 +41,7 @@ import {
   listTargetsForPublication,
   updatePublicationTarget,
 } from "@/db/queries/publicationTargets"
-import * as instagram from "@/lib/networks/instagram"
+import * as metricoolClient from "@/lib/networks/metricool-client"
 import {
   createPublication,
   createStoryForPublication,
@@ -72,10 +72,10 @@ beforeEach(() => {
   vi.mocked(createPublicationTarget).mockReset()
   vi.mocked(listTargetsForPublication).mockReset()
   vi.mocked(updatePublicationTarget).mockReset()
-  vi.mocked(instagram.createPost).mockReset()
-  vi.mocked(instagram.updatePost).mockReset()
-  vi.mocked(instagram.deletePost).mockReset()
-  vi.mocked(instagram.normalizeImageUrl).mockReset()
+  vi.mocked(metricoolClient.createPost).mockReset()
+  vi.mocked(metricoolClient.updatePost).mockReset()
+  vi.mocked(metricoolClient.deletePost).mockReset()
+  vi.mocked(metricoolClient.normalizeImageUrl).mockReset()
 })
 
 afterEach(() => {
@@ -87,7 +87,7 @@ describe("createPublication", () => {
     vi.mocked(listImagesForAsset).mockResolvedValue([
       mockImage("img-1", "asset-1", { FEED_POST: "https://blob.test/feed.jpg" }),
     ] as never)
-    vi.mocked(instagram.normalizeImageUrl).mockResolvedValue("https://static.metricool.com/feed.jpg")
+    vi.mocked(metricoolClient.normalizeImageUrl).mockResolvedValue("https://static.metricool.com/feed.jpg")
     vi.mocked(createPublicationRow).mockResolvedValue({
       id: "pub-1",
       format: "FEED_POST",
@@ -99,7 +99,7 @@ describe("createPublication", () => {
       lastSyncedAt: null,
       lastDriftNote: null,
     } as never)
-    vi.mocked(instagram.createPost).mockResolvedValue({ id: 999 })
+    vi.mocked(metricoolClient.createPost).mockResolvedValue({ id: 999 })
     vi.mocked(createPublicationTarget).mockResolvedValue({
       id: "target-1",
       publicationId: "pub-1",
@@ -118,8 +118,8 @@ describe("createPublication", () => {
       targets: [{ network: "instagram" }],
     })
 
-    expect(instagram.normalizeImageUrl).toHaveBeenCalledWith("https://blob.test/feed.jpg")
-    const payload = vi.mocked(instagram.createPost).mock.calls[0][0]
+    expect(metricoolClient.normalizeImageUrl).toHaveBeenCalledWith("https://blob.test/feed.jpg")
+    const payload = vi.mocked(metricoolClient.createPost).mock.calls[0][0]
     expect(payload.media).toEqual(["https://static.metricool.com/feed.jpg"])
     expect(payload.instagramData).toEqual({ type: "POST" })
     // Metricool exige { dateTime, timezone } — un string ISO da 500 (confirmado
@@ -155,9 +155,9 @@ describe("createPublication", () => {
       mockImage("img-1", "asset-1", { CAROUSEL: "https://blob.test/a.jpg" }, 0),
       mockImage("img-2", "asset-1", { CAROUSEL: "https://blob.test/b.jpg" }, 1),
     ] as never)
-    vi.mocked(instagram.normalizeImageUrl).mockImplementation(async (url) => `https://static.metricool.com/${url}`)
+    vi.mocked(metricoolClient.normalizeImageUrl).mockImplementation(async (url) => `https://static.metricool.com/${url}`)
     vi.mocked(createPublicationRow).mockResolvedValue({ id: "pub-1", format: "CAROUSEL" } as never)
-    vi.mocked(instagram.createPost).mockResolvedValue({ id: 1 })
+    vi.mocked(metricoolClient.createPost).mockResolvedValue({ id: 1 })
     vi.mocked(createPublicationTarget).mockResolvedValue({ id: "t1" } as never)
 
     await createPublication({
@@ -171,7 +171,7 @@ describe("createPublication", () => {
     expect(createPublicationRow).toHaveBeenCalledWith(
       expect.objectContaining({ imageIds: ["img-1", "img-2"] })
     )
-    const payload = vi.mocked(instagram.createPost).mock.calls[0][0]
+    const payload = vi.mocked(metricoolClient.createPost).mock.calls[0][0]
     expect(payload.media).toHaveLength(2)
   })
 
@@ -192,7 +192,7 @@ describe("createPublication", () => {
       })
     ).rejects.toThrow(/admite una sola imagen/)
 
-    expect(instagram.createPost).not.toHaveBeenCalled()
+    expect(metricoolClient.createPost).not.toHaveBeenCalled()
   })
 
   it("rechaza un imageId que no pertenece a la ficha", async () => {
@@ -216,13 +216,13 @@ describe("createPublication", () => {
     vi.mocked(listImagesForAsset).mockResolvedValue([
       mockImage("img-1", "asset-1", { STORY: "https://blob.test/story.jpg" }),
     ] as never)
-    vi.mocked(instagram.normalizeImageUrl).mockResolvedValue("https://static.metricool.com/story.jpg")
+    vi.mocked(metricoolClient.normalizeImageUrl).mockResolvedValue("https://static.metricool.com/story.jpg")
     vi.mocked(createPublicationRow).mockResolvedValue({
       id: "pub-1",
       format: "STORY",
       assetId: "asset-1",
     } as never)
-    vi.mocked(instagram.createPost).mockResolvedValue({ id: 1 })
+    vi.mocked(metricoolClient.createPost).mockResolvedValue({ id: 1 })
     vi.mocked(createPublicationTarget).mockResolvedValue({ id: "t1" } as never)
     vi.mocked(updatePublicationRow).mockResolvedValue({} as never)
 
@@ -234,7 +234,7 @@ describe("createPublication", () => {
       targets: [{ network: "instagram" }],
     })
 
-    const payload = vi.mocked(instagram.createPost).mock.calls[0][0]
+    const payload = vi.mocked(metricoolClient.createPost).mock.calls[0][0]
     expect(payload.autoPublish).toBe(true)
     expect(payload.instagramData).toEqual({ type: "STORY", autoPublish: true })
   })
@@ -252,7 +252,40 @@ describe("createPublication", () => {
       })
     ).rejects.toThrow(/no tiene una variante generada/)
 
-    expect(instagram.createPost).not.toHaveBeenCalled()
+    expect(metricoolClient.createPost).not.toHaveBeenCalled()
+  })
+
+  it("construye pinterestData y persiste boardId/pinTitle/pinLink en el target", async () => {
+    vi.mocked(listImagesForAsset).mockResolvedValue([
+      mockImage("img-1", "asset-1", { PIN: "https://blob.test/pin.jpg" }),
+    ] as never)
+    vi.mocked(metricoolClient.normalizeImageUrl).mockResolvedValue("https://static.metricool.com/pin.jpg")
+    vi.mocked(createPublicationRow).mockResolvedValue({
+      id: "pub-1",
+      format: "PIN",
+      assetId: "asset-1",
+    } as never)
+    vi.mocked(metricoolClient.createPost).mockResolvedValue({ id: 1 })
+    vi.mocked(createPublicationTarget).mockResolvedValue({ id: "t1" } as never)
+    vi.mocked(updatePublicationRow).mockResolvedValue({} as never)
+
+    await createPublication({
+      format: "PIN",
+      assetId: "asset-1",
+      text: "un pin",
+      publicationDate: new Date(),
+      targets: [{ network: "pinterest", boardId: "board-1", pinTitle: "Título", pinLink: "https://noru.com/p" }],
+    })
+
+    const payload = vi.mocked(metricoolClient.createPost).mock.calls[0][0]
+    expect(payload.pinterestData).toEqual({
+      boardId: "board-1",
+      pinTitle: "Título",
+      pinLink: "https://noru.com/p",
+    })
+    expect(createPublicationTarget).toHaveBeenCalledWith(
+      expect.objectContaining({ boardId: "board-1", pinTitle: "Título", pinLink: "https://noru.com/p" })
+    )
   })
 
   it("marca la publicación como ERROR si Metricool falla, en vez de dejarla huérfana en PENDING", async () => {
@@ -263,9 +296,9 @@ describe("createPublication", () => {
     vi.mocked(listImagesForAsset).mockResolvedValue([
       mockImage("img-1", "asset-1", { FEED_POST: "https://blob.test/feed.jpg" }),
     ] as never)
-    vi.mocked(instagram.normalizeImageUrl).mockResolvedValue("https://static.metricool.com/feed.jpg")
+    vi.mocked(metricoolClient.normalizeImageUrl).mockResolvedValue("https://static.metricool.com/feed.jpg")
     vi.mocked(createPublicationRow).mockResolvedValue({ id: "pub-1" } as never)
-    vi.mocked(instagram.createPost).mockRejectedValue(new Error("Metricool respondió 500"))
+    vi.mocked(metricoolClient.createPost).mockRejectedValue(new Error("Metricool respondió 500"))
 
     await expect(
       createPublication({
@@ -296,7 +329,7 @@ describe("updatePublication", () => {
     vi.mocked(listImagesForAsset).mockResolvedValue([
       mockImage("img-1", "asset-1", { FEED_POST: "https://blob.test/feed.jpg" }),
     ] as never)
-    vi.mocked(instagram.normalizeImageUrl).mockResolvedValue("https://static.metricool.com/feed.jpg")
+    vi.mocked(metricoolClient.normalizeImageUrl).mockResolvedValue("https://static.metricool.com/feed.jpg")
     vi.mocked(updatePublicationRow).mockResolvedValue({
       id: "pub-1",
       format: "FEED_POST",
@@ -307,7 +340,7 @@ describe("updatePublication", () => {
     vi.mocked(listTargetsForPublication).mockResolvedValue([
       { id: "target-1", publicationId: "pub-1", network: "instagram", metricoolId: 100, collaborators: null },
     ] as never)
-    vi.mocked(instagram.updatePost).mockResolvedValue({ id: 200 })
+    vi.mocked(metricoolClient.updatePost).mockResolvedValue({ id: 200 })
     vi.mocked(updatePublicationTarget).mockResolvedValue({
       id: "target-1",
       metricoolId: 200,
@@ -315,7 +348,7 @@ describe("updatePublication", () => {
 
     const result = await updatePublication("pub-1", { text: "nuevo" })
 
-    expect(instagram.updatePost).toHaveBeenCalledWith(100, expect.objectContaining({ text: "nuevo" }))
+    expect(metricoolClient.updatePost).toHaveBeenCalledWith(100, expect.objectContaining({ text: "nuevo" }))
     expect(updatePublicationTarget).toHaveBeenCalledWith("target-1", { metricoolId: 200 })
     expect(result?.targets[0].metricoolId).toBe(200)
   })
@@ -324,7 +357,7 @@ describe("updatePublication", () => {
     vi.mocked(getPublicationById).mockResolvedValue(undefined)
     const result = await updatePublication("nope", { text: "x" })
     expect(result).toBeUndefined()
-    expect(instagram.updatePost).not.toHaveBeenCalled()
+    expect(metricoolClient.updatePost).not.toHaveBeenCalled()
   })
 })
 
@@ -334,11 +367,11 @@ describe("deletePublication", () => {
     vi.mocked(listTargetsForPublication).mockResolvedValue([
       { id: "t1", network: "instagram", metricoolId: 100 },
     ] as never)
-    vi.mocked(instagram.deletePost).mockResolvedValue(true)
+    vi.mocked(metricoolClient.deletePost).mockResolvedValue(true)
 
     const result = await deletePublication("pub-1")
 
-    expect(instagram.deletePost).toHaveBeenCalledWith(100)
+    expect(metricoolClient.deletePost).toHaveBeenCalledWith(100)
     expect(deletePublicationRow).toHaveBeenCalledWith("pub-1")
     expect(result).toBe(true)
   })
@@ -347,7 +380,7 @@ describe("deletePublication", () => {
     vi.mocked(getPublicationById).mockResolvedValue(undefined)
     const result = await deletePublication("nope")
     expect(result).toBe(false)
-    expect(instagram.deletePost).not.toHaveBeenCalled()
+    expect(metricoolClient.deletePost).not.toHaveBeenCalled()
   })
 })
 
@@ -364,13 +397,13 @@ describe("createStoryForPublication", () => {
       mockImage("img-1", "asset-1", { STORY: "https://blob.test/story.jpg" }, 0),
       mockImage("img-2", "asset-1", { STORY: "https://blob.test/story2.jpg" }, 1),
     ] as never)
-    vi.mocked(instagram.normalizeImageUrl).mockResolvedValue("https://static.metricool.com/story.jpg")
+    vi.mocked(metricoolClient.normalizeImageUrl).mockResolvedValue("https://static.metricool.com/story.jpg")
     vi.mocked(createPublicationRow).mockResolvedValue({
       id: "pub-2",
       format: "STORY",
       assetId: "asset-1",
     } as never)
-    vi.mocked(instagram.createPost).mockResolvedValue({ id: 1 })
+    vi.mocked(metricoolClient.createPost).mockResolvedValue({ id: 1 })
     vi.mocked(createPublicationTarget).mockResolvedValue({ id: "t1" } as never)
     vi.mocked(updatePublicationRow).mockResolvedValue({} as never)
 

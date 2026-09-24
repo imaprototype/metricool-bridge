@@ -1,7 +1,7 @@
 import { updatePublication as updatePublicationRow } from "@/db/queries/publications"
 import { recordSyncLog } from "@/db/queries/syncLogs"
 import { listPublicationsWithTargets, networkClientFor } from "@/lib/publications"
-import { toMetricoolDateTimeInfo, type MetricoolDateTimeInfo, type MetricoolPost } from "@/lib/networks/instagram"
+import { toMetricoolDateTimeInfo, type MetricoolDateTimeInfo, type MetricoolPost } from "@/lib/networks/metricool-client"
 
 export interface VerifyFilters {
   from: Date

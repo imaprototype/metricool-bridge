@@ -18,13 +18,17 @@ import { publicationTargets, publications } from "@/db/schema"
 import { and, gte, inArray, lte, sql } from "drizzle-orm"
 import { getNetworkAdapter } from "@/lib/networks"
 import type { PublicationFormat } from "@/lib/networks/types"
-import * as instagram from "@/lib/networks/instagram"
+import * as metricoolClient from "@/lib/networks/metricool-client"
 
 export type PublicationWithTargets = Publication & { targets: PublicationTarget[] }
 
 export interface PublicationTargetInput {
   network: string
   collaborators?: string[]
+  /** Específicos de Pinterest — ver lib/networks/pinterest.ts. */
+  boardId?: string
+  pinTitle?: string
+  pinLink?: string
 }
 
 // Debe coincidir con el default de la columna publications.timezone (db/schema.ts).
@@ -47,16 +51,14 @@ export interface CreatePublicationInput {
 }
 
 /**
- * Hoy solo hay un adaptador real (Instagram) — cuando se registre una
- * segunda red en lib/networks/index.ts, este switch pasa a ser el punto
- * único a extender para el CRUD real contra cada API (buildProviderPayload
- * / validateAsset ya son agnósticos vía NetworkAdapter, pero listPosts/
- * createPost/updatePost/deletePost/normalizeImageUrl no forman parte de
- * esa interfaz todavía).
+ * listPosts/createPost/updatePost/deletePost/normalizeImageUrl son la API
+ * genérica de Metricool (lib/networks/metricool-client.ts) — no cambian
+ * por red, así que cualquier red registrada en lib/networks/index.ts usa
+ * el mismo cliente. `getNetworkAdapter` ya lanza si la red no existe.
  */
 export function networkClientFor(network: string) {
-  if (network === "instagram") return instagram
-  throw new Error(`No hay cliente de API implementado todavía para la red "${network}".`)
+  getNetworkAdapter(network)
+  return metricoolClient
 }
 
 /**
@@ -133,18 +135,27 @@ function buildMetricoolPayload(params: {
   timezone: string
   media: string[]
   collaborators?: string[]
+  boardId?: string
+  pinTitle?: string
+  pinLink?: string
 }): Record<string, unknown> {
   const adapter = getNetworkAdapter(params.network)
   const providerData = adapter.buildProviderPayload({
     format: params.format,
-    target: { network: params.network, collaborators: params.collaborators },
+    target: {
+      network: params.network,
+      collaborators: params.collaborators,
+      boardId: params.boardId,
+      pinTitle: params.pinTitle,
+      pinLink: params.pinLink,
+    },
   })
 
   const payload: Record<string, unknown> = {
     text: params.text,
     // Metricool exige { dateTime, timezone }, no un string ISO — ver
-    // instagram.toMetricoolDateTimeInfo (confirmado contra la API real).
-    publicationDate: instagram.toMetricoolDateTimeInfo(params.publicationDate, params.timezone),
+    // metricoolClient.toMetricoolDateTimeInfo (confirmado contra la API real).
+    publicationDate: metricoolClient.toMetricoolDateTimeInfo(params.publicationDate, params.timezone),
     providers: [{ network: params.network }],
     media: params.media,
     [`${params.network}Data`]: providerData,
@@ -196,6 +207,9 @@ export async function createPublication(input: CreatePublicationInput): Promise<
         timezone,
         media: normalizedMedia,
         collaborators: targetInput.collaborators,
+        boardId: targetInput.boardId,
+        pinTitle: targetInput.pinTitle,
+        pinLink: targetInput.pinLink,
       })
 
       const created = await client.createPost(payload)
@@ -205,6 +219,9 @@ export async function createPublication(input: CreatePublicationInput): Promise<
         network: targetInput.network,
         metricoolId: created.id,
         collaborators: targetInput.collaborators ?? null,
+        boardId: targetInput.boardId ?? null,
+        pinTitle: targetInput.pinTitle ?? null,
+        pinLink: targetInput.pinLink ?? null,
       })
       targets.push(target)
 
@@ -275,6 +292,9 @@ export async function updatePublication(
       timezone,
       media: normalizedMedia,
       collaborators: target.collaborators ?? undefined,
+      boardId: target.boardId ?? undefined,
+      pinTitle: target.pinTitle ?? undefined,
+      pinLink: target.pinLink ?? undefined,
     })
 
     // Metricool no actualiza en sitio: el PUT borra el post y crea uno

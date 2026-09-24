@@ -59,6 +59,30 @@ describe("POST /api/publications", () => {
     )
   })
 
+  it("acepta format PIN con boardId/pinTitle/pinLink en el target", async () => {
+    vi.mocked(createPublication).mockResolvedValue({ id: "pub-1" } as never)
+
+    const req = new Request("http://localhost/api/publications", {
+      method: "POST",
+      body: JSON.stringify({
+        ...validBody,
+        format: "PIN",
+        targets: [{ network: "pinterest", boardId: "board-1", pinTitle: "Título", pinLink: "https://noru.com/p" }],
+      }),
+    })
+    const res = await POST(req)
+    const body = await res.json()
+
+    expect(res.status).toBe(201)
+    expect(body.data.id).toBe("pub-1")
+    expect(createPublication).toHaveBeenCalledWith(
+      expect.objectContaining({
+        format: "PIN",
+        targets: [{ network: "pinterest", boardId: "board-1", pinTitle: "Título", pinLink: "https://noru.com/p" }],
+      })
+    )
+  })
+
   it("rechaza un formato desconocido", async () => {
     const req = new Request("http://localhost/api/publications", {
       method: "POST",

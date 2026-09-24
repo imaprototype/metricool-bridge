@@ -1,8 +1,10 @@
 import type { NetworkAdapter } from "./types"
 import { instagramAdapter } from "./instagram"
+import { pinterestAdapter } from "./pinterest"
 
 export const networkAdapters: Record<string, NetworkAdapter> = {
   instagram: instagramAdapter,
+  pinterest: pinterestAdapter,
 }
 
 export function getNetworkAdapter(network: string): NetworkAdapter {

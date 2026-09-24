@@ -35,13 +35,12 @@ export async function cropToRatio(input: Buffer, ratio: AspectRatio): Promise<Bu
  */
 export async function generateVariants(
   input: Buffer,
-  aspectRatios: Record<PublicationFormat, AspectRatio>
-): Promise<Record<PublicationFormat, Buffer>> {
+  aspectRatios: Partial<Record<PublicationFormat, AspectRatio>>
+): Promise<Partial<Record<PublicationFormat, Buffer>>> {
   const formats = Object.keys(aspectRatios) as PublicationFormat[]
-  const buffers = await Promise.all(formats.map((format) => cropToRatio(input, aspectRatios[format])))
+  const buffers = await Promise.all(formats.map((format) => cropToRatio(input, aspectRatios[format]!)))
 
-  return Object.fromEntries(formats.map((format, i) => [format, buffers[i]])) as Record<
-    PublicationFormat,
-    Buffer
+  return Object.fromEntries(formats.map((format, i) => [format, buffers[i]])) as Partial<
+    Record<PublicationFormat, Buffer>
   >
 }

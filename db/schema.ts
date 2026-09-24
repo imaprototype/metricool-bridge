@@ -11,6 +11,7 @@ export const publicationFormatEnum = pgEnum("publication_format", [
   "STORY",
   "REEL",
   "VIDEO_POST",
+  "PIN",
 ])
 export const publicationStatusEnum = pgEnum("publication_status", ["PENDING", "PUBLISHED", "ERROR"])
 export const syncLogEntityTypeEnum = pgEnum("sync_log_entity_type", ["PUBLICATION", "ASSET"])
@@ -109,6 +110,10 @@ export const publicationTargets = pgTable("publication_targets", {
   // Muta en cada PUT a Metricool — null hasta la primera escritura exitosa.
   metricoolId: integer("metricool_id"),
   collaborators: text("collaborators").array(),
+  // Específicos de Pinterest (lib/networks/pinterest.ts) — null para el resto de redes.
+  boardId: text("board_id"),
+  pinTitle: text("pin_title"),
+  pinLink: text("pin_link"),
   status: publicationStatusEnum("status").notNull().default("PENDING"),
 })
 

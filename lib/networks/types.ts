@@ -4,6 +4,7 @@ export type PublicationFormat =
   | "STORY"
   | "REEL"
   | "VIDEO_POST"
+  | "PIN"
 
 export interface AspectRatio {
   w: number
@@ -34,6 +35,10 @@ export interface PublicationTarget {
   metricoolId?: number
   collaborators?: string[]
   status?: "PENDING" | "PUBLISHED" | "ERROR"
+  /** Específicos de Pinterest — ver lib/networks/pinterest.ts. */
+  boardId?: string
+  pinTitle?: string
+  pinLink?: string
 }
 
 export interface BuildProviderPayloadParams {
@@ -50,7 +55,8 @@ export interface BuildProviderPayloadParams {
  */
 export interface NetworkAdapter {
   name: string
-  aspectRatios: Record<PublicationFormat, AspectRatio>
+  /** Partial porque no toda red soporta todos los formatos (p. ej. Pinterest solo PIN). */
+  aspectRatios: Partial<Record<PublicationFormat, AspectRatio>>
   buildProviderPayload(params: BuildProviderPayloadParams): object
   validateAsset(asset: NetworkAsset, format: PublicationFormat): void
 }

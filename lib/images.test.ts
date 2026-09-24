@@ -49,8 +49,8 @@ describe("generateVariants", () => {
     for (const format of Object.keys(instagramAspectRatios) as Array<
       keyof typeof instagramAspectRatios
     >) {
-      const expected = instagramAspectRatios[format]
-      await expect(getImageDimensions(variants[format])).resolves.toEqual({
+      const expected = instagramAspectRatios[format]!
+      await expect(getImageDimensions(variants[format]!)).resolves.toEqual({
         width: expected.w,
         height: expected.h,
       })

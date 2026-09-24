@@ -4,16 +4,16 @@ const mockExecute = vi.fn()
 vi.mock("@/lib/db", () => ({
   getDb: () => ({ execute: mockExecute }),
 }))
-vi.mock("@/lib/networks/instagram", () => ({
+vi.mock("@/lib/networks/metricool-client", () => ({
   listPosts: vi.fn(),
 }))
 
-import * as instagram from "@/lib/networks/instagram"
+import * as metricoolClient from "@/lib/networks/metricool-client"
 import { GET } from "./route"
 
 beforeEach(() => {
   mockExecute.mockReset()
-  vi.mocked(instagram.listPosts).mockReset()
+  vi.mocked(metricoolClient.listPosts).mockReset()
 })
 
 afterEach(() => {
@@ -23,7 +23,7 @@ afterEach(() => {
 describe("GET /api/health", () => {
   it("devuelve 200 y ok:true cuando DB y Metricool responden", async () => {
     mockExecute.mockResolvedValue(undefined)
-    vi.mocked(instagram.listPosts).mockResolvedValue([])
+    vi.mocked(metricoolClient.listPosts).mockResolvedValue([])
 
     const res = await GET()
     const body = await res.json()
@@ -35,7 +35,7 @@ describe("GET /api/health", () => {
 
   it("devuelve 503 y detalla el error cuando la DB falla", async () => {
     mockExecute.mockRejectedValue(new Error("connection refused"))
-    vi.mocked(instagram.listPosts).mockResolvedValue([])
+    vi.mocked(metricoolClient.listPosts).mockResolvedValue([])
 
     const res = await GET()
     const body = await res.json()
@@ -48,7 +48,7 @@ describe("GET /api/health", () => {
 
   it("devuelve 503 cuando Metricool falla, sin tumbar la respuesta de DB", async () => {
     mockExecute.mockResolvedValue(undefined)
-    vi.mocked(instagram.listPosts).mockRejectedValue(new Error("401"))
+    vi.mocked(metricoolClient.listPosts).mockRejectedValue(new Error("401"))
 
     const res = await GET()
     const body = await res.json()

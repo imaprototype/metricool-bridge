@@ -8,7 +8,7 @@ import type { AssetUsage } from "@/db/queries/assetUsages"
 import { generateVariants } from "@/lib/images"
 import { extractThumbnail } from "@/lib/video"
 import { uploadAsset as uploadToBlob } from "@/lib/blob"
-import { getNetworkAdapter } from "@/lib/networks"
+import { networkAdapters } from "@/lib/networks"
 
 export interface AssetMetadataInput {
   brandId: string
@@ -85,10 +85,14 @@ async function uploadSingleImage(
 }
 
 async function generateImageVariants(buffer: Buffer): Promise<Record<string, string>> {
-  // Hoy solo hay adaptador de Instagram — cuando se registren más redes en
-  // lib/networks/index.ts, unir aquí sus catálogos de ratios.
-  const adapter = getNetworkAdapter("instagram")
-  const variantBuffers = await generateVariants(buffer, adapter.aspectRatios)
+  // Une los catálogos de ratios de todos los adaptadores registrados
+  // (lib/networks/index.ts) — así cada imagen subida genera de una vez las
+  // variantes de todas las redes soportadas, no solo Instagram.
+  const aspectRatios = Object.values(networkAdapters).reduce(
+    (acc, adapter) => ({ ...acc, ...adapter.aspectRatios }),
+    {}
+  )
+  const variantBuffers = await generateVariants(buffer, aspectRatios)
 
   const entries = await Promise.all(
     Object.entries(variantBuffers).map(async ([format, variantBuffer]) => {

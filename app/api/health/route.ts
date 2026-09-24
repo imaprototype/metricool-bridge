@@ -1,7 +1,7 @@
 import { sql } from "drizzle-orm"
 import { NextResponse } from "next/server"
 import { getDb } from "@/lib/db"
-import * as instagram from "@/lib/networks/instagram"
+import * as metricoolClient from "@/lib/networks/metricool-client"
 
 export async function GET() {
   let databaseOk = false
@@ -19,7 +19,7 @@ export async function GET() {
     // Ping de solo lectura: listar el día de hoy basta para validar el
     // token sin ningún efecto secundario.
     const now = new Date()
-    await instagram.listPosts(now, now)
+    await metricoolClient.listPosts(now, now)
     metricoolOk = true
   } catch (err) {
     metricoolError = err instanceof Error ? err.message : "error desconocido"

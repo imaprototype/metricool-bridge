@@ -5,10 +5,16 @@ import { createPublication, listPublicationsWithTargets } from "@/lib/publicatio
 const targetSchema = z.object({
   network: z.string().min(1),
   collaborators: z.array(z.string()).optional(),
+  // Solo para network: "pinterest" — ver GET /api/pinterest/boards. No se
+  // marca obligatorio aquí (evitaría un refine por un único caso); la
+  // validación real la hace lib/networks/pinterest.ts y burbujea como 400.
+  boardId: z.string().min(1).optional(),
+  pinTitle: z.string().min(1).optional(),
+  pinLink: z.url().optional(),
 })
 
 const createPublicationSchema = z.object({
-  format: z.enum(["FEED_POST", "CAROUSEL", "STORY", "REEL", "VIDEO_POST"]),
+  format: z.enum(["FEED_POST", "CAROUSEL", "STORY", "REEL", "VIDEO_POST", "PIN"]),
   assetId: z.uuid(),
   // Qué imágenes de la ficha usar, en orden. Si se omite: portada para
   // formatos de una imagen, todas para CAROUSEL.
