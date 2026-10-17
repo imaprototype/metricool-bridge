@@ -83,6 +83,30 @@ describe("POST /api/publications", () => {
     )
   })
 
+  it("acepta format FB_POST con title opcional en el target", async () => {
+    vi.mocked(createPublication).mockResolvedValue({ id: "pub-1" } as never)
+
+    const req = new Request("http://localhost/api/publications", {
+      method: "POST",
+      body: JSON.stringify({
+        ...validBody,
+        format: "FB_POST",
+        targets: [{ network: "facebook", title: "Título del artículo" }],
+      }),
+    })
+    const res = await POST(req)
+    const body = await res.json()
+
+    expect(res.status).toBe(201)
+    expect(body.data.id).toBe("pub-1")
+    expect(createPublication).toHaveBeenCalledWith(
+      expect.objectContaining({
+        format: "FB_POST",
+        targets: [{ network: "facebook", title: "Título del artículo" }],
+      })
+    )
+  })
+
   it("rechaza un formato desconocido", async () => {
     const req = new Request("http://localhost/api/publications", {
       method: "POST",

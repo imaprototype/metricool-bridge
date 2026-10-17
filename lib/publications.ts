@@ -29,6 +29,8 @@ export interface PublicationTargetInput {
   boardId?: string
   pinTitle?: string
   pinLink?: string
+  /** Específico de Facebook — ver lib/networks/facebook.ts. */
+  title?: string
 }
 
 // Debe coincidir con el default de la columna publications.timezone (db/schema.ts).
@@ -138,6 +140,7 @@ function buildMetricoolPayload(params: {
   boardId?: string
   pinTitle?: string
   pinLink?: string
+  title?: string
 }): Record<string, unknown> {
   const adapter = getNetworkAdapter(params.network)
   const providerData = adapter.buildProviderPayload({
@@ -148,6 +151,7 @@ function buildMetricoolPayload(params: {
       boardId: params.boardId,
       pinTitle: params.pinTitle,
       pinLink: params.pinLink,
+      title: params.title,
     },
   })
 
@@ -210,6 +214,7 @@ export async function createPublication(input: CreatePublicationInput): Promise<
         boardId: targetInput.boardId,
         pinTitle: targetInput.pinTitle,
         pinLink: targetInput.pinLink,
+        title: targetInput.title,
       })
 
       const created = await client.createPost(payload)
@@ -222,6 +227,7 @@ export async function createPublication(input: CreatePublicationInput): Promise<
         boardId: targetInput.boardId ?? null,
         pinTitle: targetInput.pinTitle ?? null,
         pinLink: targetInput.pinLink ?? null,
+        title: targetInput.title ?? null,
       })
       targets.push(target)
 
@@ -295,6 +301,7 @@ export async function updatePublication(
       boardId: target.boardId ?? undefined,
       pinTitle: target.pinTitle ?? undefined,
       pinLink: target.pinLink ?? undefined,
+      title: target.title ?? undefined,
     })
 
     // Metricool no actualiza en sitio: el PUT borra el post y crea uno

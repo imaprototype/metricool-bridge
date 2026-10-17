@@ -1,6 +1,6 @@
 # NØRU × Metricool Bridge — Referencia de API
 
-**Última actualización:** 2026-09-24
+**Última actualización:** 2026-10-17
 
 > ⚠️ **`POST /api/assets` tiene un límite de ~4.5MB por request** (tope duro de infraestructura de Vercel Functions, no configurable). Con varios archivos o vídeo es fácil superarlo. El formulario web `/assets/upload` ya no tiene este límite (sube directo a Blob desde el navegador), pero este endpoint externo, de momento, sí. Ver Changelog.
 
@@ -64,7 +64,7 @@ Campos del `multipart/form-data`:
 
 Para varias fichas distintas, varias llamadas — un `POST` siempre crea exactamente una ficha.
 
-Cada archivo genera automáticamente sus variantes recortadas por formato (`FEED_POST`, `CAROUSEL`, `STORY`, `REEL`, `VIDEO_POST`, `PIN` para imágenes; solo `thumbnail` para vídeo — **los vídeos aún no se pueden usar en `/api/publications` hasta que se generen sus variantes por formato**, limitación conocida). El orden de `files` en la request es el orden final de `images[]`: la **primera imagen es la portada** (la que se usa por defecto al publicar).
+Cada archivo genera automáticamente sus variantes recortadas por formato (`FEED_POST`, `CAROUSEL`, `STORY`, `REEL`, `VIDEO_POST`, `PIN`, `FB_POST` para imágenes; solo `thumbnail` para vídeo — **los vídeos aún no se pueden usar en `/api/publications` hasta que se generen sus variantes por formato**, limitación conocida). El orden de `files` en la request es el orden final de `images[]`: la **primera imagen es la portada** (la que se usa por defecto al publicar).
 
 ## Publicaciones
 
@@ -83,7 +83,7 @@ Una publicación referencia **una sola ficha** (`assetId`). Para formatos de una
 
 ```json
 {
-  "format": "FEED_POST | CAROUSEL | STORY | REEL | VIDEO_POST | PIN",
+  "format": "FEED_POST | CAROUSEL | STORY | REEL | VIDEO_POST | PIN | FB_POST",
   "assetId": "uuid",
   "imageIds": ["uuid", "... (opcional — por defecto: portada para 1 imagen, todas para CAROUSEL)"],
   "text": "texto del post",
@@ -97,7 +97,7 @@ Una publicación referencia **una sola ficha** (`assetId`). Para formatos de una
 - `imageIds`, si se indica, debe resolver a **exactamente 1 imagen** para formatos que no sean `CAROUSEL` (400 si no).
 - Un `CAROUSEL` **no puede combinar imágenes de fichas distintas** — todas vienen de la `assetId` indicada.
 - Cada imagen usada debe tener ya generada la variante del `format` pedido (se genera sola al subir).
-- Redes implementadas hoy: `"instagram"` y `"pinterest"`.
+- Redes implementadas hoy: `"instagram"`, `"pinterest"` y `"facebook"`.
 
 **Target de Pinterest** — usa `format: "PIN"` (Pin de imagen estándar; no hay Idea Pins ni Pines de vídeo todavía) y añade estos campos al target:
 
@@ -106,6 +106,14 @@ Una publicación referencia **una sola ficha** (`assetId`). Para formatos de una
 ```
 
 `boardId` es **obligatorio** para Pinterest (400 si falta) — sácalo de `GET /api/pinterest/boards`. `pinTitle`/`pinLink` son opcionales. La imagen usada debe tener ya generada su variante `PIN` (se genera sola al subir, 1000x1500 / 2:3).
+
+**Target de Facebook** — usa `format: "FB_POST"` (post de feed estándar, pensado para compartir artículos/enlaces; mete el enlace directamente en `text`, Facebook genera la miniatura solo) y, opcionalmente, un `title` que sobreescribe el título del link preview:
+
+```json
+{ "network": "facebook", "title": "opcional" }
+```
+
+A diferencia de Pinterest, **no hace falta elegir página** — el `blogId` de la marca ya está vinculado a una única Página de Facebook (se configura en Metricool, no aquí), así que no hay campo obligatorio ni endpoint de "listar páginas". La imagen usada debe tener ya generada su variante `FB_POST` (se genera sola al subir, 1200x630 / 1.91:1 — el ratio de Open Graph que recomienda Facebook para enlaces). Fuera de alcance por ahora: Stories/Reels de Facebook y promoción de pago (boost).
 
 ### `POST /api/publications/:id/story`
 
@@ -119,12 +127,13 @@ Una publicación referencia **una sola ficha** (`assetId`). Para formatos de una
 
 ## Notas
 
-- Todo lo anterior está **verificado contra la cuenta real de Metricool/Instagram y Metricool/Pinterest**, no solo con mocks — incluyendo la creación, edición (con rotación de `id`) y borrado de publicaciones, el flujo de ficha con varias imágenes (FEED_POST con portada + CAROUSEL con todas), y la creación real de un Pin en un board real.
+- Todo lo anterior está **verificado contra la cuenta real de Metricool/Instagram, Metricool/Pinterest y Metricool/Facebook**, no solo con mocks — incluyendo la creación, edición (con rotación de `id`) y borrado de publicaciones, el flujo de ficha con varias imágenes (FEED_POST con portada + CAROUSEL con todas), la creación real de un Pin en un board real, y la creación real de un post en la Página de Facebook conectada.
 - `DELETE /api/assets/:id` archiva; no hay borrado duro de assets expuesto por API todavía.
 - Para saber si un asset lleva tiempo sin usarse antes de proponerlo, usa `neverUsed=true` o `unusedSince=<fecha>` en `GET /api/assets`.
 
 ## Changelog
 
+- **2026-10-17** — Soporte para **Facebook**: nueva red `"facebook"`, nuevo formato `format: "FB_POST"` (post de feed/artículo, ratio 1.91:1) y campo opcional `title` (override del link preview) en el target. Sin campo obligatorio ni endpoint de boards — el `blogId` de la marca ya está vinculado a una única Página de Facebook. Cada imagen subida genera ahora también su variante `FB_POST`. Verificado creando y borrando un post real en la Página conectada. Fuera de alcance: Stories/Reels de Facebook y boost (promoción de pago).
 - **2026-09-24** — Soporte para **Pinterest**: nueva red `"pinterest"`, nuevo formato `format: "PIN"` (Pin de imagen estándar, ratio 2:3), nuevo endpoint `GET /api/pinterest/boards` para listar los boards reales de la cuenta conectada, y campos `boardId` (obligatorio)/`pinTitle`/`pinLink` (opcionales) en el target de `POST /api/publications`. Cada imagen subida genera ahora también su variante `PIN` además de las de Instagram. Verificado creando y borrando un Pin real en la cuenta conectada.
 - **2026-09-09** — El formulario web `/assets/upload` ahora sube los originales directo a Vercel Blob desde el navegador (sin pasar por una Function), así que ya no tiene límite de tamaño práctico. `POST /api/assets` **no ha cambiado** y sigue teniendo el tope duro de ~4.5MB por request de las Vercel Functions — pendiente de resolver para este endpoint.
 - **2026-09-09** — Cambio de modelo importante: **Asset pasa a ser una ficha con una o varias imágenes** (`images[]`), no un archivo suelto. `POST /api/assets` ahora crea una ficha por llamada (`payload` es un objeto único, ya no un array por archivo). `POST/PATCH /api/publications` y `POST /api/publications/:id/story` cambian `assetIds`→`assetId` (una sola ficha) + `imageIds?` opcional (portada por defecto, todas para CAROUSEL). Un CAROUSEL ya no puede combinar imágenes de fichas distintas.

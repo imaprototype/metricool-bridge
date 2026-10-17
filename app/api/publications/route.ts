@@ -11,10 +11,12 @@ const targetSchema = z.object({
   boardId: z.string().min(1).optional(),
   pinTitle: z.string().min(1).optional(),
   pinLink: z.url().optional(),
+  // Solo para network: "facebook" — título opcional del link preview.
+  title: z.string().min(1).optional(),
 })
 
 const createPublicationSchema = z.object({
-  format: z.enum(["FEED_POST", "CAROUSEL", "STORY", "REEL", "VIDEO_POST", "PIN"]),
+  format: z.enum(["FEED_POST", "CAROUSEL", "STORY", "REEL", "VIDEO_POST", "PIN", "FB_POST"]),
   assetId: z.uuid(),
   // Qué imágenes de la ficha usar, en orden. Si se omite: portada para
   // formatos de una imagen, todas para CAROUSEL.

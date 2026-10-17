@@ -74,9 +74,9 @@ describe.skipIf(!process.env.RUN_DB_INTEGRATION_TESTS)("lib/assets (integración
     for (const image of created.images) {
       expect(image.kind).toBe("IMAGE")
       // generateImageVariants une los catálogos de todos los adaptadores
-      // registrados (Instagram + Pinterest) — ver lib/assets.ts.
+      // registrados (Instagram + Pinterest + Facebook) — ver lib/assets.ts.
       expect(Object.keys(image.variants as object).sort()).toEqual(
-        ["CAROUSEL", "FEED_POST", "PIN", "REEL", "STORY", "VIDEO_POST"].sort()
+        ["CAROUSEL", "FB_POST", "FEED_POST", "PIN", "REEL", "STORY", "VIDEO_POST"].sort()
       )
     }
 

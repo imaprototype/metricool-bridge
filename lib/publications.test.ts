@@ -288,6 +288,35 @@ describe("createPublication", () => {
     )
   })
 
+  it("construye facebookData y persiste title en el target", async () => {
+    vi.mocked(listImagesForAsset).mockResolvedValue([
+      mockImage("img-1", "asset-1", { FB_POST: "https://blob.test/fb.jpg" }),
+    ] as never)
+    vi.mocked(metricoolClient.normalizeImageUrl).mockResolvedValue("https://static.metricool.com/fb.jpg")
+    vi.mocked(createPublicationRow).mockResolvedValue({
+      id: "pub-1",
+      format: "FB_POST",
+      assetId: "asset-1",
+    } as never)
+    vi.mocked(metricoolClient.createPost).mockResolvedValue({ id: 1 })
+    vi.mocked(createPublicationTarget).mockResolvedValue({ id: "t1" } as never)
+    vi.mocked(updatePublicationRow).mockResolvedValue({} as never)
+
+    await createPublication({
+      format: "FB_POST",
+      assetId: "asset-1",
+      text: "mira este artículo: https://noru.com/blog/post",
+      publicationDate: new Date(),
+      targets: [{ network: "facebook", title: "Título del artículo" }],
+    })
+
+    const payload = vi.mocked(metricoolClient.createPost).mock.calls[0][0]
+    expect(payload.facebookData).toEqual({ type: "POST", title: "Título del artículo" })
+    expect(createPublicationTarget).toHaveBeenCalledWith(
+      expect.objectContaining({ network: "facebook", title: "Título del artículo" })
+    )
+  })
+
   it("marca la publicación como ERROR si Metricool falla, en vez de dejarla huérfana en PENDING", async () => {
     // Bug real encontrado en el smoke test de la Fase 9: un createPost
     // fallido dejaba la fila de Publication en PENDING para siempre, sin

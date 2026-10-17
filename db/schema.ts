@@ -12,6 +12,7 @@ export const publicationFormatEnum = pgEnum("publication_format", [
   "REEL",
   "VIDEO_POST",
   "PIN",
+  "FB_POST",
 ])
 export const publicationStatusEnum = pgEnum("publication_status", ["PENDING", "PUBLISHED", "ERROR"])
 export const syncLogEntityTypeEnum = pgEnum("sync_log_entity_type", ["PUBLICATION", "ASSET"])
@@ -114,6 +115,8 @@ export const publicationTargets = pgTable("publication_targets", {
   boardId: text("board_id"),
   pinTitle: text("pin_title"),
   pinLink: text("pin_link"),
+  // Específico de Facebook (lib/networks/facebook.ts) — título opcional del link preview.
+  title: text("title"),
   status: publicationStatusEnum("status").notNull().default("PENDING"),
 })
 

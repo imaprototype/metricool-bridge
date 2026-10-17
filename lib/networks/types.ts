@@ -5,6 +5,7 @@ export type PublicationFormat =
   | "REEL"
   | "VIDEO_POST"
   | "PIN"
+  | "FB_POST"
 
 export interface AspectRatio {
   w: number
@@ -39,6 +40,8 @@ export interface PublicationTarget {
   boardId?: string
   pinTitle?: string
   pinLink?: string
+  /** Específico de Facebook — título opcional del link preview (ver lib/networks/facebook.ts). */
+  title?: string
 }
 
 export interface BuildProviderPayloadParams {
