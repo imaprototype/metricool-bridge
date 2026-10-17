@@ -3,12 +3,19 @@ import { and, desc, eq, inArray, sql } from "drizzle-orm"
 import { getDb } from "@/lib/db"
 import { assetImages, assetUsages, assets } from "@/db/schema"
 import { createAsset, type Asset } from "@/db/queries/assets"
-import { createAssetImage, listImagesForAssets, type AssetImage } from "@/db/queries/assetImages"
+import {
+  createAssetImage,
+  listAllImages,
+  listImagesForAssets,
+  updateAssetImageVariants,
+  type AssetImage,
+} from "@/db/queries/assetImages"
 import type { AssetUsage } from "@/db/queries/assetUsages"
 import { generateVariants } from "@/lib/images"
 import { extractThumbnail } from "@/lib/video"
 import { uploadAsset as uploadToBlob } from "@/lib/blob"
 import { networkAdapters } from "@/lib/networks"
+import type { AspectRatio, PublicationFormat } from "@/lib/networks/types"
 
 export interface AssetMetadataInput {
   brandId: string
@@ -84,26 +91,33 @@ async function uploadSingleImage(
   })
 }
 
-async function generateImageVariants(buffer: Buffer): Promise<Record<string, string>> {
-  // Une los catálogos de ratios de todos los adaptadores registrados
-  // (lib/networks/index.ts) — así cada imagen subida genera de una vez las
-  // variantes de todas las redes soportadas, no solo Instagram.
-  const aspectRatios = Object.values(networkAdapters).reduce(
-    (acc, adapter) => ({ ...acc, ...adapter.aspectRatios }),
-    {}
-  )
-  const variantBuffers = await generateVariants(buffer, aspectRatios)
+/**
+ * Une los catálogos de ratios de todos los adaptadores registrados
+ * (lib/networks/index.ts) — así cada imagen subida genera de una vez las
+ * variantes de todas las redes soportadas, y backfillMissingVariants()
+ * sabe qué formatos deberían existir en una imagen ya subida.
+ */
+function catalogOfAllFormats(): Partial<Record<PublicationFormat, AspectRatio>> {
+  return Object.values(networkAdapters).reduce((acc, adapter) => ({ ...acc, ...adapter.aspectRatios }), {})
+}
 
+async function uploadVariantBuffers(
+  variantBuffers: Partial<Record<PublicationFormat, Buffer>>
+): Promise<Record<string, string>> {
   const entries = await Promise.all(
     Object.entries(variantBuffers).map(async ([format, variantBuffer]) => {
-      const uploaded = await uploadToBlob(`assets/variants/${randomUUID()}-${format}.jpg`, variantBuffer, {
+      const uploaded = await uploadToBlob(`assets/variants/${randomUUID()}-${format}.jpg`, variantBuffer as Buffer, {
         contentType: "image/jpeg",
       })
       return [format, uploaded.url] as const
     })
   )
-
   return Object.fromEntries(entries)
+}
+
+async function generateImageVariants(buffer: Buffer): Promise<Record<string, string>> {
+  const variantBuffers = await generateVariants(buffer, catalogOfAllFormats())
+  return uploadVariantBuffers(variantBuffers)
 }
 
 async function generateVideoVariants(buffer: Buffer): Promise<Record<string, string>> {
@@ -292,4 +306,71 @@ export async function getAssetWithUsages(id: string): Promise<AssetWithDetails |
     listImagesForAssets([id]),
   ])
   return { ...asset, usages, images }
+}
+
+export interface BackfillVariantsResult {
+  /** Imágenes a las que les falta algún formato del catálogo actual, en total. */
+  totalMissing: number
+  /** Cuántas se han procesado en esta llamada (acotado por `limit`). */
+  processed: number
+  /** Cuántas quedan para una siguiente llamada. */
+  remaining: number
+  updated: { assetImageId: string; assetId: string; addedFormats: string[] }[]
+}
+
+const DEFAULT_BACKFILL_LIMIT = 20
+
+/**
+ * Cada vez que se registra una red nueva en lib/networks/index.ts (Pinterest,
+ * Facebook...) las imágenes ya subidas se quedan sin la variante de ese
+ * formato — se generaron antes de que existiera. En vez de re-subir todo a
+ * mano, esto recorre las imágenes existentes, descarga su original ya
+ * subido (igual que finalizeAssetUpload) y genera solo los formatos que de
+ * verdad faltan — nunca regenera uno que ya existe.
+ *
+ * Acotado por `limit` (y pensado para llamarse varias veces hasta que
+ * `remaining` llegue a 0) porque recorrer todas las imágenes de golpe podría
+ * superar el tiempo máximo de una función serverless si hay muchas.
+ */
+export async function backfillMissingVariants(limit = DEFAULT_BACKFILL_LIMIT): Promise<BackfillVariantsResult> {
+  const catalog = catalogOfAllFormats()
+  const allImages = await listAllImages()
+
+  const withMissing = allImages
+    .filter((image) => image.kind === "IMAGE")
+    .map((image) => {
+      const existingFormats = new Set(Object.keys(image.variants as Record<string, string>))
+      const missingFormats = Object.keys(catalog).filter((format) => !existingFormats.has(format))
+      return { image, missingFormats }
+    })
+    .filter((entry) => entry.missingFormats.length > 0)
+
+  const batch = withMissing.slice(0, Math.max(0, limit))
+  const updated: BackfillVariantsResult["updated"] = []
+
+  for (const { image, missingFormats } of batch) {
+    const response = await fetch(image.originalBlobUrl)
+    if (!response.ok) {
+      throw new Error(`No se pudo descargar el original de la imagen ${image.id}: ${image.originalBlobUrl}`)
+    }
+    const buffer = Buffer.from(await response.arrayBuffer())
+
+    const missingCatalog = Object.fromEntries(
+      missingFormats.map((format) => [format, catalog[format as PublicationFormat]!])
+    ) as Partial<Record<PublicationFormat, AspectRatio>>
+    const variantBuffers = await generateVariants(buffer, missingCatalog)
+    const newVariantUrls = await uploadVariantBuffers(variantBuffers)
+
+    const mergedVariants = { ...(image.variants as Record<string, string>), ...newVariantUrls }
+    await updateAssetImageVariants(image.id, mergedVariants)
+
+    updated.push({ assetImageId: image.id, assetId: image.assetId, addedFormats: missingFormats })
+  }
+
+  return {
+    totalMissing: withMissing.length,
+    processed: batch.length,
+    remaining: withMissing.length - batch.length,
+    updated,
+  }
 }

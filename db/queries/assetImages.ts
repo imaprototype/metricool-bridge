@@ -24,3 +24,16 @@ export async function createAssetImage(data: Omit<NewAssetImage, "id" | "created
   const [image] = await getDb().insert(assetImages).values(data).returning()
   return image
 }
+
+/** Para el backfill de variantes (lib/assets.ts) — necesita recorrer todas las imágenes, no las de una ficha. */
+export async function listAllImages(): Promise<AssetImage[]> {
+  return getDb().select().from(assetImages)
+}
+
+export async function updateAssetImageVariants(
+  id: string,
+  variants: Record<string, string>
+): Promise<AssetImage | undefined> {
+  const [image] = await getDb().update(assetImages).set({ variants }).where(eq(assetImages.id, id)).returning()
+  return image
+}

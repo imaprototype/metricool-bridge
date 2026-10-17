@@ -39,8 +39,21 @@ Un **Asset es una ficha de producto/contenido**, no un archivo — puede tener *
 | POST | `/api/assets` | Crea **una** ficha con una o varias imágenes (`multipart/form-data`) |
 | PATCH | `/api/assets/:id` | `{ objectType?, brandId?, photographerIds?, productUrl?, inspirationUrl?, shortDescription?, tags? }` — metadata de la ficha, no toca sus imágenes |
 | DELETE | `/api/assets/:id` | **Archiva**, no borra el blob |
+| POST | `/api/assets/backfill-variants?limit=20` | Genera las variantes que le falten a imágenes ya subidas (ver abajo) |
 
 `?photographer=<uuid>` en el GET filtra por "este fotógrafo está entre los de la ficha". El conjunto de imágenes de una ficha queda fijo al crearla — no hay endpoint para añadir/quitar imágenes de una ficha existente todavía; para eso, crea una ficha nueva.
+
+### `POST /api/assets/backfill-variants`
+
+Cada vez que se añade una red nueva (Pinterest, Facebook...) las imágenes **ya subidas antes de ese cambio** se quedan sin la variante de ese formato — no se regeneran solas. Esta ruta recorre las imágenes existentes, descarga su original ya subido y genera **solo los formatos que de verdad faltan** (nunca re-sube uno que ya existe).
+
+```json
+// respuesta
+{ "data": { "totalMissing": 177, "processed": 20, "remaining": 157, "updated": [{ "assetImageId": "uuid", "assetId": "uuid", "addedFormats": ["FB_POST"] }] } }
+```
+
+- `?limit=` (opcional, por defecto 20) acota cuántas imágenes procesa esta llamada — procesar imágenes implica descargar el original + `sharp` + subir a Blob por cada una, y una tanda grande podría superar el límite de una función serverless. Si `remaining > 0`, vuelve a llamar hasta que llegue a `0`.
+- Idempotente: si no le falta nada a una imagen, no la toca — es seguro llamarla varias veces o en paralelo con nuevas subidas.
 
 ### `POST /api/assets`
 
@@ -133,6 +146,7 @@ A diferencia de Pinterest, **no hace falta elegir página** — el `blogId` de l
 
 ## Changelog
 
+- **2026-10-17** — Nuevo `POST /api/assets/backfill-variants`: genera las variantes que le falten a imágenes ya subidas antes de registrarse una red nueva (solo los formatos ausentes, nunca regenera los que ya existen). Usado para rellenar `FB_POST` (y `PIN` en 4 fichas que eran de antes de Pinterest) en las 177 imágenes que ya existían al añadir Facebook.
 - **2026-10-17** — Soporte para **Facebook**: nueva red `"facebook"`, nuevo formato `format: "FB_POST"` (post de feed/artículo, ratio 1.91:1) y campo opcional `title` (override del link preview) en el target. Sin campo obligatorio ni endpoint de boards — el `blogId` de la marca ya está vinculado a una única Página de Facebook. Cada imagen subida genera ahora también su variante `FB_POST`. Verificado creando y borrando un post real en la Página conectada. Fuera de alcance: Stories/Reels de Facebook y boost (promoción de pago).
 - **2026-09-24** — Soporte para **Pinterest**: nueva red `"pinterest"`, nuevo formato `format: "PIN"` (Pin de imagen estándar, ratio 2:3), nuevo endpoint `GET /api/pinterest/boards` para listar los boards reales de la cuenta conectada, y campos `boardId` (obligatorio)/`pinTitle`/`pinLink` (opcionales) en el target de `POST /api/publications`. Cada imagen subida genera ahora también su variante `PIN` además de las de Instagram. Verificado creando y borrando un Pin real en la cuenta conectada.
 - **2026-09-09** — El formulario web `/assets/upload` ahora sube los originales directo a Vercel Blob desde el navegador (sin pasar por una Function), así que ya no tiene límite de tamaño práctico. `POST /api/assets` **no ha cambiado** y sigue teniendo el tope duro de ~4.5MB por request de las Vercel Functions — pendiente de resolver para este endpoint.
